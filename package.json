@@ -36,6 +36,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "d3": "^7.9.0",
     "d3-array": "^3.2.0"
   },
   "devDependencies": {
@@ -59,6 +60,7 @@
     "build": "rollup -c",
     "build:win": "mkdir dist 2>nul & rollup -c",
     "test": "mkdir -p test/output && mocha -r module-alias/register 'test/**/*-test.js' test/snapshot.js && eslint src test",
+    "test:win": "if not exist test\\output mkdir test\\output && mocha -r module-alias/register test/**/*-test.js test/snapshot.js && eslint src test",
     "prepublishOnly": "rm -rf dist && rollup -c",
     "postpublish": "git push && git push --tags && cd ../d3.github.com && git pull && cp ../${npm_package_name}/dist/${npm_package_name}.js ${npm_package_name}.v${npm_package_version%%.*}.js && cp ../${npm_package_name}/dist/${npm_package_name}.min.js ${npm_package_name}.v${npm_package_version%%.*}.min.js && git add ${npm_package_name}.v${npm_package_version%%.*}.js ${npm_package_name}.v${npm_package_version%%.*}.min.js && git commit -m \"${npm_package_name} ${npm_package_version}\" && git push && cd -"
   },

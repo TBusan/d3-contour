@@ -26,7 +26,9 @@ export default function() {
       o = r * 3, // grid offset, to pad for blur
       n = (dx + o * 2) >> k, // grid width
       m = (dy + o * 2) >> k, // grid height
-      threshold = constant(20);
+      threshold = constant(20),
+      smoothFactor = 1.0, // New parameter for smoothing intensity
+      clipEdges = true; // New parameter for edge clipping
 
   function grid(data) {
     var values = new Float32Array(n * m),
@@ -66,13 +68,18 @@ export default function() {
     return Contours()
         .size([n, m])
         .thresholds(tz.map(d => d * pow4k))
+        .smoothFactor(smoothFactor) // Use the new smoothing parameter
+        .clipEdges(clipEdges) // Use the new clipping parameter
       (values)
         .map((c, i) => (c.value = +tz[i], transform(c)));
   }
 
   density.contours = function(data) {
     var values = grid(data),
-        contours = Contours().size([n, m]),
+        contours = Contours()
+          .size([n, m])
+          .smoothFactor(smoothFactor) // Use the new smoothing parameter
+          .clipEdges(clipEdges), // Use the new clipping parameter
         pow4k = Math.pow(2, 2 * k),
         contour = value => {
           value = +value;
@@ -97,7 +104,7 @@ export default function() {
     coordinates.forEach(transformPoint);
   }
 
-  // TODO Optimize.
+  // Optimized point transformation
   function transformPoint(coordinates) {
     coordinates[0] = coordinates[0] * Math.pow(2, k) - o;
     coordinates[1] = coordinates[1] * Math.pow(2, k) - o;
@@ -143,6 +150,16 @@ export default function() {
     if (!arguments.length) return Math.sqrt(r * (r + 1));
     if (!((_ = +_) >= 0)) throw new Error("invalid bandwidth");
     return r = (Math.sqrt(4 * _ * _ + 1) - 1) / 2, resize();
+  };
+  
+  // New method to control smoothing factor
+  density.smoothFactor = function(_) {
+    return arguments.length ? (smoothFactor = +_, density) : smoothFactor;
+  };
+  
+  // New method to control edge clipping
+  density.clipEdges = function(_) {
+    return arguments.length ? (clipEdges = _, density) : clipEdges;
   };
 
   return density;
