@@ -6,25 +6,6 @@ import constant from "./constant.js";
 import contains from "./contains.js";
 import noop from "./noop.js";
 
-// Define constants for saddle point handling, inspired by plotly.js approach
-const CHOOSESADDLE = {
-  713: [7, 13],
-  1114: [11, 14],
-  104: [1, 4],
-  208: [2, 8]
-};
-const SADDLEREMAINDER = {
-  1: 4,
-  2: 8,
-  4: 1,
-  7: 13,
-  8: 2,
-  11: 14,
-  13: 7,
-  14: 11
-};
-
-// The marching squares algorithm produces square-based contour rings with 16 cases
 var cases = [
   [],
   [[[1.0, 1.5], [0.5, 1.0]]],
@@ -77,20 +58,9 @@ export default function() {
 
     isorings(values, v, function(ring) {
       smooth(ring, values, v);
-      // Add distance information for post-processing
-      addGridInfo(ring);
       if (area(ring) > 0) polygons.push([ring]);
       else holes.push(ring);
     });
-
-    // Post-process rings to improve quality
-    polygons = polygons.map(polygon => {
-      // Remove too close points
-      polygon[0] = optimizePointDensity(polygon[0]);
-      return polygon;
-    });
-
-    holes = holes.map(hole => optimizePointDensity(hole));
 
     holes.forEach(function(hole) {
       for (var i = 0, n = polygons.length, polygon; i < n; ++i) {
@@ -108,88 +78,8 @@ export default function() {
     };
   }
 
-  // Add grid index information to ring points for better path optimization
-  function addGridInfo(ring) {
-    ring.forEach(function(point) {
-      point[2] = point[0] | 0; // add grid x index
-      point[3] = point[1] | 0; // add grid y index
-    });
-  }
-
-  // Remove points that are too close together
-  function optimizePointDensity(ring) {
-    if (ring.length <= 2) return ring;
-    
-    // Calculate total path length in grid units
-    let totaldist = 0;
-    const alldists = [];
-    
-    for (let i = 1; i < ring.length; i++) {
-      const thisdist = ptDist(ring[i], ring[i - 1]);
-      totaldist += thisdist;
-      alldists.push(thisdist);
-    }
-    
-    // Add last segment if this is a closed path
-    const closedpath = equalPts(ring[0], ring[ring.length - 1], 0.01, 0.01);
-    if (closedpath && ring.length > 1) {
-      const thisdist = ptDist(ring[0], ring[ring.length - 1]);
-      totaldist += thisdist;
-      alldists.push(thisdist);
-    }
-    
-    // If there are not enough points, return the original
-    if (ring.length < 4) return ring;
-    
-    const distThresholdFactor = 0.2 * (smooth === smoothLinear ? 1 : 0);
-    const distThreshold = totaldist / alldists.length * distThresholdFactor;
-    
-    // Skip optimization if threshold is zero or too small
-    if (distThreshold <= 0.01) return ring;
-    
-    const result = [];
-    let i = 0;
-    let current = ring[0];
-    result.push(current);
-    
-    while (i < ring.length - 1) {
-      let nextIndex = i + 1;
-      let distAcc = alldists[i];
-      
-      // Accumulate points that are too close
-      while (nextIndex < ring.length - 1 && distAcc + alldists[nextIndex] < distThreshold) {
-        distAcc += alldists[nextIndex];
-        nextIndex++;
-      }
-      
-      if (nextIndex > i + 1) {
-        // Average the points
-        const avgPoint = [0, 0];
-        for (let j = i + 1; j <= nextIndex; j++) {
-          avgPoint[0] += ring[j][0];
-          avgPoint[1] += ring[j][1];
-        }
-        avgPoint[0] /= (nextIndex - i);
-        avgPoint[1] /= (nextIndex - i);
-        result.push(avgPoint);
-      } else {
-        result.push(ring[nextIndex]);
-      }
-      
-      i = nextIndex;
-    }
-    
-    // Ensure closed paths remain closed
-    if (closedpath && !equalPts(result[0], result[result.length - 1], 0.01, 0.01)) {
-      result.push([result[0][0], result[0][1]]);
-    }
-    
-    return result;
-  }
-
   // Marching squares with isolines stitched into rings.
   // Based on https://github.com/topojson/topojson-client/blob/v3.0.0/src/stitch.js
-  // Enhanced with better saddle point handling
   function isorings(values, value, callback) {
     var fragmentByStart = new Array,
         fragmentByEnd = new Array,
@@ -214,50 +104,7 @@ export default function() {
       while (++x < dx - 1) {
         t0 = t1, t1 = above(values[y * dx + dx + x + 1], value);
         t3 = t2, t2 = above(values[y * dx + x + 1], value);
-        
-        // Get marching index
-        let mi = t0 | t1 << 1 | t2 << 2 | t3 << 3;
-        
-        // Handle saddle cases better (case 5 and 10)
-        if (mi === 5 || mi === 10) {
-          // Sample the center value to disambiguate the saddle
-          const corners = [
-            [values[y * dx + x], values[y * dx + x + 1]],
-            [values[(y + 1) * dx + x], values[(y + 1) * dx + x + 1]]
-          ];
-          const avg = (corners[0][0] + corners[0][1] + corners[1][0] + corners[1][1]) / 4;
-          
-          // Determine which way the saddle should go based on the average
-          if (value > avg) {
-            mi = (mi === 5) ? 713 : 1114;
-          } else {
-            mi = (mi === 5) ? 104 : 208;
-          }
-          
-          // Handle the special saddle cases
-          if (mi > 15) {
-            if (mi === 713 || mi === 1114) {
-              // Apply the saddle case direction using CHOOSESADDLE
-              const directions = CHOOSESADDLE[mi];
-              cases[directions[0]].forEach(stitch);
-              cases[directions[1]].forEach(stitch);
-              
-              // Update the marching index for potential next steps
-              mi = SADDLEREMAINDER[directions[1]];
-            } else if (mi === 104 || mi === 208) {
-              // Apply the saddle case direction using CHOOSESADDLE
-              const directions = CHOOSESADDLE[mi];
-              cases[directions[0]].forEach(stitch);
-              cases[directions[1]].forEach(stitch);
-              
-              // Update the marching index for potential next steps
-              mi = SADDLEREMAINDER[directions[1]];
-            }
-            continue;
-          }
-        }
-        
-        cases[mi].forEach(stitch);
+        cases[t0 | t1 << 1 | t2 << 2 | t3 << 3].forEach(stitch);
       }
       cases[t1 | t2 << 3].forEach(stitch);
     }
@@ -316,27 +163,6 @@ export default function() {
 
   function index(point) {
     return point[0] * 2 + point[1] * (dx + 1) * 4;
-  }
-
-  // Compare if two points are equal within tolerance
-  function equalPts(pt1, pt2, xtol, ytol) {
-    return Math.abs(pt1[0] - pt2[0]) < xtol &&
-           Math.abs(pt1[1] - pt2[1]) < ytol;
-  }
-
-  // Calculate distance between points in grid units
-  function ptDist(pt1, pt2) {
-    // If grid indices are available, use them
-    if (pt1.length > 2 && pt2.length > 2) {
-      const dx = pt1[2] - pt2[2];
-      const dy = pt1[3] - pt2[3];
-      return Math.sqrt(dx * dx + dy * dy);
-    } else {
-      // Fall back to pixel coordinates
-      const dx = pt1[0] - pt2[0];
-      const dy = pt1[1] - pt2[1];
-      return Math.sqrt(dx * dx + dy * dy);
-    }
   }
 
   function smoothLinear(ring, values, value) {
