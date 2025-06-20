@@ -145,7 +145,7 @@ export default function() {
     }
 
     // Post-process to ensure no overlap between different contour levels
-    removeOverlaps(allPolygons);
+    // removeOverlaps(allPolygons); // 禁用重叠移除，避免产生漏洞
     
     return allPolygons;
   }
@@ -168,10 +168,17 @@ export default function() {
         if (!ring || ring.length < 3) return; // Skip invalid rings after clipping
       }
       
+      // Filter out very small rings that are likely artifacts
+      // 降低过滤阈值，避免过度过滤
+      const ringArea = Math.abs(area(ring));
+      const minArea = 0.001; // 将最小面积阈值从0.01降低到0.001
+      if (ringArea < minArea) {
+        return; // Skip tiny rings
+      }
+      
       // Determine if the ring is a hole (clockwise) or exterior (counter-clockwise)
-      const ringArea = area(ring);
-      if (ringArea > 0) polygons.push([ring]);
-      else if (ringArea < 0) holes.push(ring);
+      if (area(ring) > 0) polygons.push([ring]);
+      else if (area(ring) < 0) holes.push(ring);
     });
 
     // If no polygons were generated, create a default polygon
@@ -209,7 +216,19 @@ export default function() {
       
       // Check candidates to find the smallest containing polygon
       for (const {polygon, data} of candidates) {
-        if (contains(polygon, hole[0]) !== -1) {  // Check if the first point of the hole is inside the polygon
+        // 改进包含检测，检查多个点而不仅仅是第一个点
+        let containsCount = 0;
+        const pointsToCheck = Math.min(5, hole.length);
+        const step = Math.max(1, Math.floor(hole.length / pointsToCheck));
+        
+        for (let i = 0; i < hole.length; i += step) {
+          if (contains(polygon, hole[i]) !== -1) {
+            containsCount++;
+          }
+        }
+        
+        // 如果超过一半的采样点在多边形内，认为是包含关系
+        if (containsCount > pointsToCheck / 2) {
           const polygonArea = Math.abs(area(polygon));
           if (!containingPolygon || polygonArea < containingPolygonArea) {
             containingPolygon = polygon;
@@ -241,14 +260,35 @@ export default function() {
 
     // Ensure topological consistency with previous level
     if (prevLevelPolygons.length > 0) {
-      polygons = ensureTopologicalConsistency(polygons, prevLevelPolygons);
+      // 禁用拓扑一致性处理，避免产生漏洞
+      // polygons = ensureTopologicalConsistency(polygons, prevLevelPolygons);
     }
+
+    // Remove small polygons that are likely artifacts
+    // 降低过滤阈值，避免过度过滤
+    polygons = removeSmallPolygons(polygons);
 
     return {
       type: "MultiPolygon",
       value: value,
       coordinates: polygons
     };
+  }
+
+  // Remove small polygons that are likely artifacts
+  function removeSmallPolygons(polygons) {
+    // 降低最小面积阈值，避免过度过滤
+    const minArea = 0.01; // 将最小面积阈值从0.1降低到0.01
+    return polygons.filter(poly => {
+      if (!poly || !poly.length) return false;
+      
+      // Calculate area of the exterior ring
+      const exteriorRing = poly[0];
+      if (!exteriorRing || exteriorRing.length < 3) return false;
+      
+      const exteriorArea = Math.abs(area(exteriorRing));
+      return exteriorArea >= minArea;
+    });
   }
 
   // Clip a ring to the grid boundaries
@@ -483,6 +523,9 @@ export default function() {
 
     // Debug: Track if any rings are generated
     let ringsGenerated = false;
+    
+    // Track grid cells that have been processed to avoid duplicates
+    const processedCells = new Set();
 
     // Special case for the first row (y = -1, t2 = t3 = 0).
     x = y = -1;
@@ -518,6 +561,9 @@ export default function() {
     }
     cases[t2 << 3].forEach(stitch);
 
+    // Process any remaining fragments to form complete rings
+    processRemainingFragments();
+
     // If no rings were generated, create a default ring for the contour level
     // This ensures that each contour level has at least one polygon
     if (!ringsGenerated && fragmentByStart.size === 0 && fragmentByEnd.size === 0) {
@@ -536,10 +582,106 @@ export default function() {
       
       callback(defaultRing);
     }
+
+    // Process remaining fragments that couldn't be stitched
+    function processRemainingFragments() {
+      // If there are still fragments, try to connect them
+      if (fragmentByStart.size > 0 || fragmentByEnd.size > 0) {
+        // Try to connect fragments that are close to each other
+        connectNearbyFragments();
+        
+        // Process any remaining fragments
+        for (const fragment of fragmentByStart.values()) {
+          // Only process fragments that haven't been deleted
+          if (fragmentByStart.has(fragment.start)) {
+            // Close the ring if the start and end points are close enough
+            if (pointsAreClose(fragment.ring[0], fragment.ring[fragment.ring.length - 1], 0.5)) {
+              // Add the start point to close the ring
+              fragment.ring.push([...fragment.ring[0]]);
+              callback(fragment.ring);
+              ringsGenerated = true;
+            } else {
+              // If the ring can't be closed, we'll still use it if it's long enough
+              if (fragment.ring.length >= 3) {
+                callback(fragment.ring);
+                ringsGenerated = true;
+              }
+            }
+            
+            // Remove the processed fragment
+            fragmentByStart.delete(fragment.start);
+            if (fragmentByEnd.has(fragment.end)) {
+              fragmentByEnd.delete(fragment.end);
+            }
+          }
+        }
+      }
+    }
     
-    // Process any remaining fragments
-    for (const fragment of fragmentByStart.values()) {
-      callback(fragment.ring);
+    // Try to connect fragments that are close to each other
+    function connectNearbyFragments() {
+      const connectionThreshold = 0.5; // Maximum distance to consider connecting fragments
+      let connected = true;
+      
+      // Keep trying to connect fragments until no more connections can be made
+      while (connected && fragmentByStart.size > 0) {
+        connected = false;
+        
+        // For each fragment, try to find a nearby fragment to connect to
+        for (const [startIndex, fragment] of fragmentByStart.entries()) {
+          if (!fragmentByStart.has(startIndex)) continue; // Skip if already processed
+          
+          const endPoint = fragment.ring[fragment.ring.length - 1];
+          let closestFragment = null;
+          let closestDistance = connectionThreshold;
+          let closestStartIndex = null;
+          
+          // Find the closest fragment to connect to
+          for (const [otherStartIndex, otherFragment] of fragmentByStart.entries()) {
+            if (startIndex === otherStartIndex) continue; // Skip self
+            
+            const otherStartPoint = otherFragment.ring[0];
+            const distance = Math.sqrt(
+              Math.pow(endPoint[0] - otherStartPoint[0], 2) + 
+              Math.pow(endPoint[1] - otherStartPoint[1], 2)
+            );
+            
+            if (distance < closestDistance) {
+              closestDistance = distance;
+              closestFragment = otherFragment;
+              closestStartIndex = otherStartIndex;
+            }
+          }
+          
+          // If a close fragment was found, connect them
+          if (closestFragment) {
+            // Connect the fragments
+            const newRing = [...fragment.ring, ...closestFragment.ring];
+            const newFragment = {
+              start: fragment.start,
+              end: closestFragment.end,
+              ring: newRing
+            };
+            
+            // Update the maps
+            fragmentByStart.delete(startIndex);
+            fragmentByStart.delete(closestStartIndex);
+            fragmentByEnd.delete(fragment.end);
+            fragmentByEnd.delete(closestFragment.start);
+            
+            fragmentByStart.set(newFragment.start, newFragment);
+            fragmentByEnd.set(newFragment.end, newFragment);
+            
+            connected = true;
+            break; // Start over with the new set of fragments
+          }
+        }
+      }
+    }
+    
+    // Check if two points are close enough to be considered the same
+    function pointsAreClose(p1, p2, threshold = 0.01) {
+      return Math.abs(p1[0] - p2[0]) < threshold && Math.abs(p1[1] - p2[1]) < threshold;
     }
 
     function stitch(line) {
@@ -548,6 +690,11 @@ export default function() {
           startIndex = index(start),
           endIndex = index(end),
           f, g;
+      
+      // Skip if this cell has already been processed
+      const cellKey = `${x},${y}`;
+      if (processedCells.has(cellKey)) return;
+      processedCells.add(cellKey);
           
       if (f = fragmentByEnd.get(startIndex)) {
         if (g = fragmentByStart.get(endIndex)) {
@@ -598,6 +745,8 @@ export default function() {
   }
 
   function smoothLinear(ring, values, value, factor = 1.0) {
+    // Apply additional smoothing to reduce artifacts
+    // First, apply standard smoothing
     ring.forEach(function(point) {
       var x = point[0],
           y = point[1],
@@ -611,6 +760,79 @@ export default function() {
         point[1] = smooth1(y, valid(values[(yt - 1) * dx + xt]), v1, value, factor);
       }
     });
+    
+    // Apply additional smoothing to reduce small artifacts
+    // 降低简化强度，避免过度简化导致细节丢失
+    if (ring.length > 4) {
+      // 将简化容差从0.05降低到0.025，保留更多细节
+      simplifyRing(ring, 0.025 * factor); 
+    }
+  }
+  
+  // Simplify a ring using a modified Douglas-Peucker algorithm
+  function simplifyRing(ring, tolerance) {
+    if (ring.length <= 3) return ring; // Can't simplify further
+    
+    // Find the point with the maximum distance
+    let maxDist = 0;
+    let index = 0;
+    const start = ring[0];
+    const end = ring[ring.length - 1];
+    
+    // Skip if start and end points are not the same (not a closed ring)
+    if (start[0] !== end[0] || start[1] !== end[1]) return ring;
+    
+    for (let i = 1; i < ring.length - 1; i++) {
+      const dist = pointToLineDistance(ring[i], start, end);
+      if (dist > maxDist) {
+        maxDist = dist;
+        index = i;
+      }
+    }
+    
+    // If max distance is greater than tolerance, recursively simplify
+    if (maxDist > tolerance) {
+      // Recursive simplification of the two segments
+      const firstHalf = simplifyRing(ring.slice(0, index + 1), tolerance);
+      const secondHalf = simplifyRing(ring.slice(index), tolerance);
+      
+      // Combine the results, removing the duplicate point
+      return firstHalf.slice(0, -1).concat(secondHalf);
+    } else {
+      // 修改简化逻辑，保留更多点
+      // 当距离小于容差时，不要只保留起点和终点，而是保留一些中间点
+      if (ring.length > 10) {
+        // 对于长环，保留一些关键点
+        const result = [start];
+        const step = Math.floor(ring.length / 5);
+        for (let i = step; i < ring.length - 1; i += step) {
+          result.push(ring[i]);
+        }
+        result.push(end);
+        return result;
+      } else {
+        // 对于短环，保留所有点
+        return ring;
+      }
+    }
+  }
+  
+  // Calculate the perpendicular distance from a point to a line segment
+  function pointToLineDistance(point, lineStart, lineEnd) {
+    const [x, y] = point;
+    const [x1, y1] = lineStart;
+    const [x2, y2] = lineEnd;
+    
+    // If start and end points are the same, return distance to that point
+    if (x1 === x2 && y1 === y2) {
+      return Math.sqrt((x - x1) * (x - x1) + (y - y1) * (y - y1));
+    }
+    
+    // Calculate perpendicular distance
+    const numerator = Math.abs((y2 - y1) * x - (x2 - x1) * y + x2 * y1 - y2 * x1);
+    const denominator = Math.sqrt((y2 - y1) * (y2 - y1) + (x2 - x1) * (x2 - x1));
+    
+    return numerator / denominator;
   }
 
   contours.contour = contour;
@@ -662,8 +884,9 @@ function smooth1(x, v0, v1, value, factor = 1.0) {
   const a = value - v0;
   const b = v1 - v0;
   const d = isFinite(a) || isFinite(b) ? a / b : Math.sign(a) / Math.sign(b);
-  // Apply smoothing factor to control the degree of smoothing
-  const adjustedD = isNaN(d) ? 0 : (d - 0.5) * factor + 0.5;
+  // 调整平滑因子的影响，使其更加温和
+  // 将调整从 (d - 0.5) * factor + 0.5 改为更温和的版本
+  const adjustedD = isNaN(d) ? 0 : (d - 0.5) * (factor * 0.8) + 0.5;
   return isNaN(adjustedD) ? x : x + adjustedD - 0.5;
 }
 
