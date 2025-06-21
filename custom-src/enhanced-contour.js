@@ -507,63 +507,148 @@ export function generateContourBands(data, lowerThreshold, upperThreshold) {
   // 创建等值面
   const polygons = [];
   
-  // 处理下阈值轮廓作为外环
-  for (const lowerRing of lowerContour.coordinates) {
-    // 确保环是闭合的
-    if (lowerRing.length > 0 && !pointsAreClose(lowerRing[0], lowerRing[lowerRing.length - 1])) {
-      lowerRing.push([...lowerRing[0]]);
+  // 创建数据边界轮廓
+  const width = data[0].length;
+  const height = data.length;
+  const boundaryRing = [
+    [0, 0],
+    [width - 1, 0],
+    [width - 1, height - 1],
+    [0, height - 1],
+    [0, 0]
+  ];
+  
+  // 创建一个映射，标记数据点是否在下阈值以上
+  const isAboveLower = [];
+  for (let y = 0; y < height; y++) {
+    const row = [];
+    for (let x = 0; x < width; x++) {
+      const value = data[y][x];
+      row.push(value != null && value >= lowerThreshold);
     }
-    
-    // 计算面积以确保方向正确（外环应为顺时针）
-    const area = calculateArea(lowerRing);
-    
-    // 创建多边形，初始只有外环
-    const polygon = [lowerRing];
-    
-    // 查找此外环内的所有上阈值轮廓作为内环
-    for (const upperRing of upperContour.coordinates) {
+    isAboveLower.push(row);
+  }
+  
+  // 创建一个映射，标记数据点是否在上阈值以下
+  const isBelowUpper = [];
+  for (let y = 0; y < height; y++) {
+    const row = [];
+    for (let x = 0; x < width; x++) {
+      const value = data[y][x];
+      row.push(value != null && value < upperThreshold);
+    }
+    isBelowUpper.push(row);
+  }
+  
+  // 处理下阈值轮廓作为外环
+  if (lowerContour.coordinates.length > 0) {
+    for (const lowerRing of lowerContour.coordinates) {
       // 确保环是闭合的
-      const closedUpperRing = [...upperRing];
-      if (closedUpperRing.length > 0 && !pointsAreClose(closedUpperRing[0], closedUpperRing[closedUpperRing.length - 1])) {
-        closedUpperRing.push([...closedUpperRing[0]]);
+      const closedLowerRing = [...lowerRing];
+      if (closedLowerRing.length > 0 && !pointsAreClose(closedLowerRing[0], closedLowerRing[closedLowerRing.length - 1])) {
+        closedLowerRing.push([...closedLowerRing[0]]);
       }
       
-      // 检查上轮廓是否在下轮廓内部
-      if (closedUpperRing.length > 0) {
-        const testPoint = closedUpperRing[0];
-        if (pointInPolygon(testPoint, lowerRing)) {
-          // 确保内环方向与外环相反
-          const upperArea = calculateArea(closedUpperRing);
-          if ((area < 0 && upperArea < 0) || (area > 0 && upperArea > 0)) {
-            // 如果方向相同，反转内环
-            closedUpperRing.reverse();
+      // 计算面积以确保方向正确（外环应为顺时针）
+      const area = calculateArea(closedLowerRing);
+      if (area < 0) {
+        // 如果是逆时针，反转为顺时针
+        closedLowerRing.reverse();
+      }
+      
+      // 创建多边形，初始只有外环
+      const polygon = [closedLowerRing];
+      
+      // 查找此外环内的所有上阈值轮廓作为内环
+      for (const upperRing of upperContour.coordinates) {
+        // 确保环是闭合的
+        const closedUpperRing = [...upperRing];
+        if (closedUpperRing.length > 0 && !pointsAreClose(closedUpperRing[0], closedUpperRing[closedUpperRing.length - 1])) {
+          closedUpperRing.push([...closedUpperRing[0]]);
+        }
+        
+        // 计算面积以确保方向正确（内环应为逆时针）
+        const upperArea = calculateArea(closedUpperRing);
+        if (upperArea > 0) {
+          // 如果是顺时针，反转为逆时针
+          closedUpperRing.reverse();
+        }
+        
+        // 检查上轮廓是否在下轮廓内部
+        if (closedUpperRing.length > 0) {
+          // 使用多个点来确定是否在内部，增加可靠性
+          let insideCount = 0;
+          const testPoints = [
+            closedUpperRing[0],
+            closedUpperRing[Math.floor(closedUpperRing.length / 3)],
+            closedUpperRing[Math.floor(closedUpperRing.length * 2 / 3)]
+          ];
+          
+          for (const testPoint of testPoints) {
+            if (pointInPolygon(testPoint, closedLowerRing)) {
+              insideCount++;
+            }
           }
           
-          polygon.push(closedUpperRing);
+          // 如果大多数测试点在内部，则认为是内环
+          if (insideCount >= 2) {
+            polygon.push(closedUpperRing);
+          }
+        }
+      }
+      
+      polygons.push(polygon);
+    }
+  }
+  
+  // 处理边界情况：如果没有下阈值轮廓，或者需要处理外部区域
+  if (polygons.length === 0) {
+    // 检查是否整个区域都在阈值范围内
+    let allInRange = true;
+    let anyInRange = false;
+    
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const value = data[y][x];
+        if (value != null) {
+          if (value >= lowerThreshold && value < upperThreshold) {
+            anyInRange = true;
+          } else {
+            allInRange = false;
+          }
         }
       }
     }
     
-    polygons.push(polygon);
+    // 如果整个区域都在范围内，使用边界作为外环
+    if (allInRange || anyInRange) {
+      // 创建边界多边形
+      const boundaryPolygon = [boundaryRing];
+      
+      // 添加所有上阈值轮廓作为内环
+      for (const upperRing of upperContour.coordinates) {
+        // 确保环是闭合的
+        const closedUpperRing = [...upperRing];
+        if (closedUpperRing.length > 0 && !pointsAreClose(closedUpperRing[0], closedUpperRing[closedUpperRing.length - 1])) {
+          closedUpperRing.push([...closedUpperRing[0]]);
+        }
+        
+        // 确保内环为逆时针方向
+        const upperArea = calculateArea(closedUpperRing);
+        if (upperArea > 0) {
+          closedUpperRing.reverse();
+        }
+        
+        boundaryPolygon.push(closedUpperRing);
+      }
+      
+      polygons.push(boundaryPolygon);
+    }
   }
   
-  // 处理边界情况：创建包含整个数据范围的等值面
-  if (polygons.length === 0) {
-    // 创建数据边界轮廓
-    const width = data[0].length;
-    const height = data.length;
-    const boundaryRing = [
-      [0, 0],
-      [width - 1, 0],
-      [width - 1, height - 1],
-      [0, height - 1],
-      [0, 0]
-    ];
-    
-    // 创建多边形，使用边界作为外环
-    const boundaryPolygon = [boundaryRing];
-    
-    // 将所有上阈值轮廓作为内环
+  // 如果仍然没有多边形，检查是否有特殊情况需要处理
+  if (polygons.length === 0 && upperContour.coordinates.length > 0) {
+    // 尝试使用上阈值轮廓的补集作为等值面
     for (const upperRing of upperContour.coordinates) {
       // 确保环是闭合的
       const closedUpperRing = [...upperRing];
@@ -571,16 +656,16 @@ export function generateContourBands(data, lowerThreshold, upperThreshold) {
         closedUpperRing.push([...closedUpperRing[0]]);
       }
       
-      // 确保内环为逆时针方向
-      const upperArea = calculateArea(closedUpperRing);
-      if (upperArea > 0) {
+      // 计算面积以确保方向正确
+      const area = calculateArea(closedUpperRing);
+      if (area > 0) {
+        // 如果是顺时针，反转为逆时针（作为内环）
         closedUpperRing.reverse();
       }
       
-      boundaryPolygon.push(closedUpperRing);
+      // 创建一个使用边界作为外环，上阈值轮廓作为内环的多边形
+      polygons.push([boundaryRing, closedUpperRing]);
     }
-    
-    polygons.push(boundaryPolygon);
   }
   
   return {

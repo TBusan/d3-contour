@@ -169,6 +169,7 @@
       
       <div class="control-group">
         <button id="update-btn">Update Visualization</button>
+        <button id="reset-view-btn">Reset View</button>
       </div>
     </div>
     
@@ -215,6 +216,7 @@
     const showBandsCheckbox = document.getElementById('show-bands');
     const showContoursCheckbox = document.getElementById('show-contours');
     const updateBtn = document.getElementById('update-btn');
+    const resetViewBtn = document.getElementById('reset-view-btn');
     
     // Update threshold/band count display
     thresholdCountInput.addEventListener('input', () => {
@@ -232,8 +234,47 @@
     // Update button click handler
     updateBtn.addEventListener('click', updateVisualization);
     
+    // Reset view button click handler
+    resetViewBtn.addEventListener('click', resetView);
+    
     // Current visualization mode
     let currentMode = 'contours';
+    
+    // Zoom behavior
+    const zoom = d3.zoom()
+      .scaleExtent([0.1, 10])
+      .on('zoom', zoomed);
+    
+    // Apply zoom behavior to all SVGs
+    contoursSvg.call(zoom);
+    bandsSvg.call(zoom);
+    combinedSvg.call(zoom);
+    
+    // Create groups for zoom transformation
+    const contoursGroup = contoursSvg.append('g');
+    const bandsGroup = bandsSvg.append('g');
+    const combinedGroup = combinedSvg.append('g');
+    
+    // Zoom handler function
+    function zoomed(event) {
+      const { transform } = event;
+      const svg = d3.select(this);
+      
+      if (svg.attr('id') === 'contours-svg') {
+        contoursGroup.attr('transform', transform);
+      } else if (svg.attr('id') === 'bands-svg') {
+        bandsGroup.attr('transform', transform);
+      } else if (svg.attr('id') === 'combined-svg') {
+        combinedGroup.attr('transform', transform);
+      }
+    }
+    
+    // Reset view function
+    function resetView() {
+      contoursSvg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
+      bandsSvg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
+      combinedSvg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
+    }
     
     // Make switchTab function available globally
     window.switchTab = function(mode) {
@@ -338,7 +379,7 @@
     }
     
     // Render contour lines to an SVG
-    function renderContourLines(svg, contourResults, colorScale, gridWidth, gridHeight, xScale, yScale) {
+    function renderContourLines(group, contourResults, colorScale, gridWidth, gridHeight, xScale, yScale) {
       contourResults.forEach(result => {
         const transformedCoordinates = transformContourCoordinates(
           result.coordinates, 
@@ -354,21 +395,21 @@
           .y(d => d[1])
           .curve(d3.curveBasis); // Use basis interpolation for smoother lines
         
-        svg.append('g')
+        group.append('g')
           .selectAll('path')
           .data(transformedCoordinates)
           .enter()
           .append('path')
           .attr('d', lineGenerator)
           .attr('stroke', colorScale(result.threshold))
-          .attr('stroke-width', 1.5)
+          .attr('stroke-width', 0.5)
           .attr('fill', 'none')
           .attr('class', 'contour');
       });
     }
     
     // Render contour bands to an SVG
-    function renderContourBands(svg, bandResults, colorScale, gridWidth, gridHeight, xScale, yScale) {
+    function renderContourBands(group, bandResults, colorScale, gridWidth, gridHeight, xScale, yScale) {
       // Create path generator for bands
       const pathGenerator = d3.geoPath();
       
@@ -391,7 +432,7 @@
         });
         
         // Render each band
-        svg.append('g')
+        group.append('g')
           .selectAll('path')
           .data(geoJSONPolygons)
           .enter()
@@ -413,13 +454,13 @@
       
       // Add X axis
       svg.append('g')
-        .attr('class', 'axis')
+        .attr('class', 'axis x-axis')
         .attr('transform', `translate(0, ${svg.node().clientHeight - 50})`)
         .call(xAxis);
       
       // Add Y axis
       svg.append('g')
-        .attr('class', 'axis')
+        .attr('class', 'axis y-axis')
         .attr('transform', 'translate(50, 0)')
         .call(yAxis);
     }
@@ -445,11 +486,15 @@
       const gridHeight = contourData.data.y.length;
       
       // Clear the SVGs
-      contoursSvg.selectAll('*').remove();
-      bandsSvg.selectAll('*').remove();
-      combinedSvg.selectAll('*').remove();
+      contoursGroup.selectAll('*').remove();
+      bandsGroup.selectAll('*').remove();
+      combinedGroup.selectAll('*').remove();
       
-      // Set up scales for X and Y axes
+      contoursSvg.selectAll('.axis').remove();
+      bandsSvg.selectAll('.axis').remove();
+      combinedSvg.selectAll('.axis').remove();
+      
+      // Set up scales for X and Y axes - use the same scale for all views
       const xScale = d3.scaleLinear()
         .domain([d3.min(contourData.data.x), d3.max(contourData.data.x)])
         .range([50, contoursSvg.node().clientWidth - 50]);
@@ -469,6 +514,7 @@
       
       // Generate appropriate thresholds
       const thresholds = generateThresholds(thresholdCount);
+      debugger
       const bandThresholds = generateThresholds(bandCount + 1);
       
       if (currentMode === 'contours' || currentMode === 'combined') {
@@ -483,9 +529,9 @@
         
         // Render contour lines
         if (currentMode === 'contours') {
-          renderContourLines(contoursSvg, contourResults, colorScale, gridWidth, gridHeight, xScale, yScale);
+          renderContourLines(contoursGroup, contourResults, colorScale, gridWidth, gridHeight, xScale, yScale);
         } else if (currentMode === 'combined' && showContoursCheckbox.checked) {
-          renderContourLines(combinedSvg, contourResults, colorScale, gridWidth, gridHeight, xScale, yScale);
+          renderContourLines(combinedGroup, contourResults, colorScale, gridWidth, gridHeight, xScale, yScale);
         }
       }
       
@@ -503,9 +549,9 @@
         
         // Render contour bands
         if (currentMode === 'bands') {
-          renderContourBands(bandsSvg, bandResults, colorScale, gridWidth, gridHeight, xScale, yScale);
+          renderContourBands(bandsGroup, bandResults, colorScale, gridWidth, gridHeight, xScale, yScale);
         } else if (currentMode === 'combined' && showBandsCheckbox.checked) {
-          renderContourBands(combinedSvg, bandResults, colorScale, gridWidth, gridHeight, xScale, yScale);
+          renderContourBands(combinedGroup, bandResults, colorScale, gridWidth, gridHeight, xScale, yScale);
         }
       }
       
@@ -522,7 +568,8 @@
       dataInfo.innerHTML = `
         Data Range: [${contourData.data.zmin.toFixed(2)}, ${contourData.data.zmax.toFixed(2)}]<br>
         Grid Size: ${gridWidth}×${gridHeight}<br>
-        Current Mode: ${modeText}
+        Current Mode: ${modeText}<br>
+        <small>Tip: Scroll to zoom, drag to pan, click "Reset View" to reset</small>
       `;
     }
     
