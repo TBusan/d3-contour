@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>边界处理测试</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+    }
+    .chart {
+      margin: 10px;
+      padding: 10px;
+      border: 1px solid #ccc;
+    }
+    h1, h2 {
+      color: #333;
+    }
+    canvas {
+      border: 1px solid #ddd;
+    }
+  </style>
+</head>
+<body>
+  <h1>等值面边界处理测试</h1>
+  
+  <div class="container">
+    <div class="chart">
+      <h2>等值线 (Contour Lines)</h2>
+      <canvas id="contourLinesCanvas" width="500" height="500"></canvas>
+    </div>
+    
+    <div class="chart">
+      <h2>等值面 (Contour Bands)</h2>
+      <canvas id="contourBandsCanvas" width="500" height="500"></canvas>
+    </div>
+  </div>
+
+  <script type="module">
+    import { generateContourLines } from '../contour-lines.js';
+    import { generateContourBands } from '../contour-bands.js';
+    
+    // 创建测试数据
+    function createTestData(width, height, hasHoles = false) {
+      const data = new Array(height);
+      for (let y = 0; y < height; y++) {
+        data[y] = new Array(width);
+        for (let x = 0; x < width; x++) {
+          // 距离中心的标准化距离
+          const dx = x - width / 2;
+          const dy = y - height / 2;
+          const distance = Math.sqrt(dx * dx + dy * dy) / (Math.sqrt(width * width + height * height) / 2);
+          
+          // 添加一些高斯随机噪声
+          const noise = Math.random() * 0.1;
+          
+          // 如果需要添加空洞
+          if (hasHoles && Math.random() < 0.05) {
+            data[y][x] = null;
+          } else {
+            // 生成高斯分布样式的数据
+            data[y][x] = Math.exp(-5 * distance * distance) + noise;
+          }
+        }
+      }
+      return data;
+    }
+    
+    // 绘制等值线
+    function drawContourLines(canvas, data, thresholds) {
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      
+      ctx.clearRect(0, 0, width, height);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'black';
+      
+      // 使用generateContourLines函数生成等值线
+      const contours = generateContourLines(data, thresholds, {
+        smooth: true,
+        smoothFactor: 0.25
+      });
+      
+      // 根据数据尺寸计算缩放比例
+      const scaleX = width / (data[0].length - 1);
+      const scaleY = height / (data.length - 1);
+      
+      // 绘制等值线
+      ctx.beginPath();
+      
+      if (Array.isArray(contours)) {
+        for (const contour of contours) {
+          drawSingleContour(ctx, contour, scaleX, scaleY);
+        }
+      } else {
+        drawSingleContour(ctx, contours, scaleX, scaleY);
+      }
+      
+      ctx.stroke();
+    }
+    
+    // 绘制单个等值线
+    function drawSingleContour(ctx, contour, scaleX, scaleY) {
+      if (!contour || !contour.coordinates) return;
+      
+      for (const line of contour.coordinates) {
+        if (line.length === 0) continue;
+        
+        ctx.moveTo(line[0][0] * scaleX, line[0][1] * scaleY);
+        
+        for (let i = 1; i < line.length; i++) {
+          ctx.lineTo(line[i][0] * scaleX, line[i][1] * scaleY);
+        }
+      }
+    }
+    
+    // 绘制等值面
+    function drawContourBands(canvas, data, thresholds) {
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      
+      ctx.clearRect(0, 0, width, height);
+      
+      // 使用generateContourBands函数生成等值面
+      const bands = generateContourBands(data, thresholds, {
+        smooth: true,
+        smoothFactor: 0.25,
+        colorScale: ["#440154", "#482878", "#3e4989", "#31688e", "#26828e", "#1f9e89", "#35b779", "#6ece58", "#b5de2b", "#fde725"]
+      });
+      
+      // 根据数据尺寸计算缩放比例
+      const scaleX = width / (data[0].length - 1);
+      const scaleY = height / (data.length - 1);
+      
+      // 绘制等值面
+      if (Array.isArray(bands)) {
+        // 从高值到低值绘制，以确保正确的绘制顺序
+        for (let i = bands.length - 1; i >= 0; i--) {
+          drawSingleBand(ctx, bands[i], scaleX, scaleY);
+        }
+      } else {
+        drawSingleBand(ctx, bands, scaleX, scaleY);
+      }
+    }
+    
+    // 绘制单个等值面
+    function drawSingleBand(ctx, band, scaleX, scaleY) {
+      if (!band || !band.coordinates) return;
+      
+      ctx.fillStyle = band.fill.color;
+      
+      for (const polygon of band.coordinates) {
+        ctx.beginPath();
+        
+        // 绘制外轮廓
+        const outerRing = polygon[0];
+        if (outerRing && outerRing.length > 0) {
+          ctx.moveTo(outerRing[0][0] * scaleX, outerRing[0][1] * scaleY);
+          
+          for (let i = 1; i < outerRing.length; i++) {
+            ctx.lineTo(outerRing[i][0] * scaleX, outerRing[i][1] * scaleY);
+          }
+        }
+        
+        // 绘制内部孔洞
+        for (let j = 1; j < polygon.length; j++) {
+          const innerRing = polygon[j];
+          if (innerRing && innerRing.length > 0) {
+            ctx.moveTo(innerRing[0][0] * scaleX, innerRing[0][1] * scaleY);
+            
+            for (let i = 1; i < innerRing.length; i++) {
+              ctx.lineTo(innerRing[i][0] * scaleX, innerRing[i][1] * scaleY);
+            }
+          }
+        }
+        
+        ctx.closePath();
+        ctx.fill();
+        
+        // 绘制轮廓线
+        if (band.stroke) {
+          ctx.strokeStyle = band.stroke.color;
+          ctx.lineWidth = band.stroke.width;
+          ctx.stroke();
+        }
+      }
+    }
+    
+    // 主函数
+    function main() {
+      // 创建测试数据 (50x50 网格)
+      const data = createTestData(50, 50, true);
+      
+      // 设置阈值
+      const thresholds = Array.from({ length: 10 }, (_, i) => 0.1 + i * 0.09);
+      
+      // 获取画布元素
+      const contourLinesCanvas = document.getElementById('contourLinesCanvas');
+      const contourBandsCanvas = document.getElementById('contourBandsCanvas');
+      
+      // 绘制等值线
+      drawContourLines(contourLinesCanvas, data, thresholds);
+      
+      // 绘制等值面
+      drawContourBands(contourBandsCanvas, data, thresholds);
+    }
+    
+    // 页面加载后执行
+    window.onload = main;
+  </script>
+</body>
+</html> 

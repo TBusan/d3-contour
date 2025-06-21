@@ -26,7 +26,8 @@ export function generateContourBands(data, thresholds, options = {}) {
     connectEnds: true,   // 是否连接端点
     colorScale: null,    // 颜色比例尺
     fillOpacity: 0.7,    // 填充透明度
-    showLines: true      // 是否显示轮廓线
+    showLines: true,     // 是否显示轮廓线
+    clipToDataBounds: true // 是否裁剪到数据边界
   };
   
   const config = { ...defaultOptions, ...options };
@@ -64,7 +65,10 @@ export function generateContourBands(data, thresholds, options = {}) {
     const threshold = sortedThresholds[i];
     
     // 使用Marching Squares算法生成等值线
-    const contourLines = marchingSquares(data, threshold, config);
+    const contourLines = marchingSquares(data, threshold, {
+      ...config,
+      saddleResolution: true // 解决鞍点问题
+    });
     
     // 从等值线创建多边形
     const polygons = createPolygons(contourLines, data, threshold, width, height);
