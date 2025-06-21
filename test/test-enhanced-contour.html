@@ -199,7 +199,7 @@
     // Import D3
     import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
     import { generateContours, generateContourBands, generateContourAndBands } from './tmp2.js';
-    import { contourData } from './data/testData.js';
+    import { contourData } from './data/testData1.js';
     
     // Reference to SVG and info elements
     const contoursSvg = d3.select('#contours-svg');
@@ -258,22 +258,19 @@
     // Zoom handler function
     function zoomed(event) {
       const { transform } = event;
-      const svg = d3.select(this);
       
-      if (svg.attr('id') === 'contours-svg') {
-        contoursGroup.attr('transform', transform);
-      } else if (svg.attr('id') === 'bands-svg') {
-        bandsGroup.attr('transform', transform);
-      } else if (svg.attr('id') === 'combined-svg') {
-        combinedGroup.attr('transform', transform);
-      }
+      // 同步所有视图的缩放和平移
+      contoursGroup.attr('transform', transform);
+      bandsGroup.attr('transform', transform);
+      combinedGroup.attr('transform', transform);
     }
     
     // Reset view function
     function resetView() {
-      contoursSvg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
-      bandsSvg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
-      combinedSvg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
+      const resetTransform = d3.zoomIdentity;
+      contoursSvg.transition().duration(750).call(zoom.transform, resetTransform);
+      bandsSvg.transition().duration(750).call(zoom.transform, resetTransform);
+      combinedSvg.transition().duration(750).call(zoom.transform, resetTransform);
     }
     
     // Make switchTab function available globally
@@ -353,13 +350,13 @@
 
     // Transform coordinates from grid to SVG space
     function transformCoordinates(point, gridWidth, gridHeight, xScale, yScale) {
-      const gridX = point[0] / gridWidth;
-      const gridY = point[1] / gridHeight;
+      // 直接使用数据点的原始坐标，而不是网格索引
+      // 将点的位置从[0,gridWidth]x[0,gridHeight]映射到实际数据坐标
+      const x = point[0] / (gridWidth - 1) * (contourData.data.x[gridWidth - 1] - contourData.data.x[0]) + contourData.data.x[0];
+      const y = point[1] / (gridHeight - 1) * (contourData.data.y[gridHeight - 1] - contourData.data.y[0]) + contourData.data.y[0];
       
-      const dataX = contourData.data.x[0] + gridX * (contourData.data.x[gridWidth - 1] - contourData.data.x[0]);
-      const dataY = contourData.data.y[0] + gridY * (contourData.data.y[gridHeight - 1] - contourData.data.y[0]);
-      
-      return [xScale(dataX), yScale(dataY)];
+      // 使用比例尺将数据坐标映射到SVG空间
+      return [xScale(x), yScale(y)];
     }
     
     // Transform contour coordinates
@@ -482,7 +479,6 @@
       
       // Get the current settings
       const thresholdCount = parseInt(thresholdCountInput.value);
-      const bandCount = parseInt(bandCountInput.value);
       const colorScheme = colorSchemeSelect.value;
       
       // Prepare the data as 2D grid
@@ -501,27 +497,38 @@
       bandsSvg.selectAll('.axis').remove();
       combinedSvg.selectAll('.axis').remove();
       
-      // Set up scales for X and Y axes - use the same scale for all views
+      // 确保所有SVG元素具有相同的尺寸
+      const svgWidth = contoursSvg.node().clientWidth;
+      const svgHeight = contoursSvg.node().clientHeight;
+      
+      bandsSvg.attr('width', svgWidth).attr('height', svgHeight);
+      combinedSvg.attr('width', svgWidth).attr('height', svgHeight);
+      
+      // 为所有视图设置完全相同的X和Y轴比例
+      const xMin = d3.min(contourData.data.x);
+      const xMax = d3.max(contourData.data.x);
+      const yMin = d3.min(contourData.data.y);
+      const yMax = d3.max(contourData.data.y);
+      
       const xScale = d3.scaleLinear()
-        .domain([d3.min(contourData.data.x), d3.max(contourData.data.x)])
-        .range([50, contoursSvg.node().clientWidth - 50]);
+        .domain([xMin, xMax])
+        .range([50, svgWidth - 50]);
       
       const yScale = d3.scaleLinear()
-        .domain([d3.min(contourData.data.y), d3.max(contourData.data.y)])
-        .range([contoursSvg.node().clientHeight - 50, 50]);
+        .domain([yMin, yMax])
+        .range([svgHeight - 50, 50]);
       
-      // Create color scales
+      // 创建颜色比例
       const colorScale = d3.scaleSequential(colorSchemes[colorScheme])
         .domain([contourData.data.zmin, contourData.data.zmax]);
       
-      // Setup axes for all SVGs
+      // 为所有SVG设置相同的坐标轴
       setupAxes(contoursSvg, xScale, yScale);
       setupAxes(bandsSvg, xScale, yScale);
       setupAxes(combinedSvg, xScale, yScale);
       
-      // Generate appropriate thresholds
+      // 生成统一的阈值数组，等值线和等值面使用相同的阈值
       const thresholds = generateThresholds(thresholdCount);
-      const bandThresholds = generateThresholds(bandCount + 1);
       
       if (currentMode === 'contours' || currentMode === 'combined') {
         // 一次性生成所有阈值的等值线
@@ -537,7 +544,7 @@
       
       if (currentMode === 'bands' || currentMode === 'combined') {
         // 一次性生成所有阈值的等值面，使用与等值线相同的阈值
-        const bandResults = generateContourBands(gridData, bandThresholds);
+        const bandResults = generateContourBands(gridData, thresholds);
         
         // Render contour bands
         if (currentMode === 'bands') {
@@ -552,9 +559,9 @@
       if (currentMode === 'contours') {
         modeText = `Contour Lines (Thresholds: ${thresholdCount})`;
       } else if (currentMode === 'bands') {
-        modeText = `Contour Bands (Bands: ${bandCount})`;
+        modeText = `Contour Bands (Bands: ${thresholdCount})`;
       } else {
-        modeText = `Combined View (Thresholds: ${thresholdCount}, Bands: ${bandCount})`;
+        modeText = `Combined View (Thresholds: ${thresholdCount})`;
       }
       
       dataInfo.innerHTML = `

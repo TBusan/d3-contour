@@ -416,24 +416,6 @@ function smoothContour(contour) {
 }
 
 /**
- * 计算多边形区域的符号面积
- * @param {Array<Array<Number>>} ring 多边形顶点数组
- * @returns {Number} 符号面积
- */
-function calculateArea(ring) {
-  const n = ring.length;
-  let area = 0;
-  
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    area += ring[i][0] * ring[j][1];
-    area -= ring[j][0] * ring[i][1];
-  }
-  
-  return area / 2;
-}
-
-/**
  * 确定一个点是否在多边形内部
  * 这个函数用于getPointInsideRing函数的结果验证
  * @param {Array<Number>} point 要测试的点
@@ -463,41 +445,80 @@ function pointInPolygon(point, polygon) {
  * @returns {Array<Number>} 环内部的点
  */
 function getPointInsideRing(ring) {
-  // 简单方法：取所有点的平均值作为内部点
-  let sumX = 0;
-  let sumY = 0;
-  
-  for (const point of ring) {
-    sumX += point[0];
-    sumY += point[1];
+  if (ring.length < 3) {
+    return null; // 少于3个点无法形成多边形
   }
   
-  const centerPoint = [sumX / ring.length, sumY / ring.length];
+  // 计算多边形的边界框
+  let minX = Infinity, minY = Infinity;
+  let maxX = -Infinity, maxY = -Infinity;
   
-  // 验证中心点是否在环内，如果不在，尝试找一个在环内的点
-  if (!pointInPolygon(centerPoint, ring)) {
-    // 尝试使用环上的点略微向内移动
-    for (let i = 0; i < ring.length - 1; i++) {
-      const p1 = ring[i];
-      const p2 = ring[(i + 1) % ring.length];
-      
-      // 计算中点并向环内部偏移一点
-      const midX = (p1[0] + p2[0]) / 2;
-      const midY = (p1[1] + p2[1]) / 2;
-      
-      // 向环的中心方向偏移
-      const offsetX = (centerPoint[0] - midX) * 0.1;
-      const offsetY = (centerPoint[1] - midY) * 0.1;
-      
-      const testPoint = [midX + offsetX, midY + offsetY];
-      
-      if (pointInPolygon(testPoint, ring)) {
-        return testPoint;
-      }
+  for (const point of ring) {
+    minX = Math.min(minX, point[0]);
+    minY = Math.min(minY, point[1]);
+    maxX = Math.max(maxX, point[0]);
+    maxY = Math.max(maxY, point[1]);
+  }
+  
+  // 计算中心点
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const centerPoint = [centerX, centerY];
+  
+  // 检查中心点是否在多边形内
+  if (pointInPolygon(centerPoint, ring)) {
+    return centerPoint;
+  }
+  
+  // 如果中心点不在多边形内，尝试在边界框内随机生成点
+  const MAX_ATTEMPTS = 50;
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    // 在边界框内随机生成点
+    const randX = minX + Math.random() * (maxX - minX);
+    const randY = minY + Math.random() * (maxY - minY);
+    const testPoint = [randX, randY];
+    
+    if (pointInPolygon(testPoint, ring)) {
+      return testPoint;
     }
   }
   
-  // 如果无法找到内部点，返回中心点（可能不准确）
+  // 尝试使用多边形边的中点并向内偏移
+  for (let i = 0; i < ring.length - 1; i++) {
+    const p1 = ring[i];
+    const p2 = ring[(i + 1) % ring.length];
+    
+    // 计算边的中点
+    const midX = (p1[0] + p2[0]) / 2;
+    const midY = (p1[1] + p2[1]) / 2;
+    
+    // 计算边的法向量（向内）
+    const dx = p2[0] - p1[0];
+    const dy = p2[1] - p1[1];
+    const length = Math.sqrt(dx * dx + dy * dy);
+    
+    if (length < 1e-10) continue; // 避免除以零
+    
+    // 法向量（逆时针旋转90度）
+    const nx = -dy / length;
+    const ny = dx / length;
+    
+    // 沿法向量向内偏移一小段距离
+    const OFFSET = 0.1; // 小的偏移量
+    const testPoint = [midX + nx * OFFSET, midY + ny * OFFSET];
+    
+    if (pointInPolygon(testPoint, ring)) {
+      return testPoint;
+    }
+    
+    // 尝试反方向
+    const testPoint2 = [midX - nx * OFFSET, midY - ny * OFFSET];
+    if (pointInPolygon(testPoint2, ring)) {
+      return testPoint2;
+    }
+  }
+  
+  // 如果所有方法都失败，返回原始中心点（可能不准确）
   return centerPoint;
 }
 
@@ -595,75 +616,59 @@ export function generateContourBands(data, thresholds) {
       isAboveThreshold.push(row);
     }
     
-    // 处理等值线轮廓
-    if (contour.coordinates.length > 0) {
-      for (const ring of contour.coordinates) {
-        // 确保环是闭合的
-        const closedRing = [...ring];
-        if (closedRing.length > 0 && !pointsAreClose(closedRing[0], closedRing[closedRing.length - 1])) {
-          closedRing.push([...closedRing[0]]);
+    // 检查整个区域是否都在阈值的一侧
+    let allAbove = true;
+    let allBelow = true;
+    
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const value = data[y][x];
+        if (value != null) {
+          if (value < threshold) {
+            allAbove = false;
+          } else {
+            allBelow = false;
+          }
         }
-        
-        // 计算面积以确保方向正确
-        const area = calculateArea(closedRing);
-        
-        // 确定这个轮廓是表示高于阈值的区域还是低于阈值的区域
-        // 我们需要取一个点，检查它是否高于阈值
-        const testPoint = getPointInsideRing(closedRing);
-        const gridX = Math.floor(testPoint[0]);
-        const gridY = Math.floor(testPoint[1]);
-        
-        // 检查这个点是否在网格范围内
-        let isHighSide = false;
-        if (gridX >= 0 && gridX < width && gridY >= 0 && gridY < height) {
-          isHighSide = isAboveThreshold[gridY][gridX];
-        }
-        
-        // 根据是高侧还是低侧决定如何处理这个轮廓
-        if (isHighSide) {
-          // 高侧区域 - 这个轮廓内部的点高于阈值
-          // 如果面积为负（逆时针），保持不变作为外环
-          // 如果面积为正（顺时针），反转为逆时针作为外环
-          if (area > 0) {
-            closedRing.reverse();
+        if (!allAbove && !allBelow) break;
+      }
+      if (!allAbove && !allBelow) break;
+    }
+    
+    // 如果所有点都在阈值以上，创建一个覆盖整个区域的多边形
+    if (allAbove) {
+      polygons.push([boundaryRing]);
+    }
+    // 如果所有点都在阈值以下，不创建多边形（返回空）
+    else if (!allBelow) {
+      // 处理等值线轮廓
+      if (contour.coordinates.length > 0) {
+        for (const ring of contour.coordinates) {
+          // 确保环是闭合的
+          const closedRing = [...ring];
+          if (closedRing.length > 0 && !pointsAreClose(closedRing[0], closedRing[closedRing.length - 1])) {
+            closedRing.push([...closedRing[0]]);
           }
           
-          // 将这个轮廓作为外环创建一个新的多边形
-          polygons.push([closedRing]);
-        } else {
-          // 低侧区域 - 这个轮廓内部的点低于阈值
-          // 如果面积为正（顺时针），保持不变作为外环
-          // 如果面积为负（逆时针），反转为顺时针作为外环
-          if (area < 0) {
-            closedRing.reverse();
+          // 确定这个轮廓是表示高于阈值的区域还是低于阈值的区域
+          const testPoint = getPointInsideRing(closedRing);
+          if (testPoint === null) continue; // 无法确定内部点，跳过
+          
+          const gridX = Math.floor(testPoint[0]);
+          const gridY = Math.floor(testPoint[1]);
+          
+          // 检查这个点是否在网格范围内
+          let isHighSide = false;
+          if (gridX >= 0 && gridX < width && gridY >= 0 && gridY < height) {
+            isHighSide = isAboveThreshold[gridY][gridX];
           }
           
-          // 将这个轮廓作为外环创建一个新的多边形
-          polygons.push([closedRing]);
-        }
-      }
-    } else {
-      // 如果没有等值线，检查整个区域是否都在阈值的一侧
-      let allAbove = true;
-      
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const value = data[y][x];
-          if (value != null) {
-            if (value < threshold) {
-              allAbove = false;
-              break;
-            }
+          // 只保留高于阈值的区域
+          if (isHighSide) {
+            polygons.push([closedRing]);
           }
         }
-        if (!allAbove) break;
       }
-      
-      // 如果所有点都在阈值以上，创建一个覆盖整个区域的多边形
-      if (allAbove) {
-        polygons.push([boundaryRing]);
-      }
-      // 如果所有点都在阈值以下，不创建多边形（返回空）
     }
     
     results.push({
