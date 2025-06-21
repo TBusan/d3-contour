@@ -380,7 +380,10 @@
     
     // Render contour lines to an SVG
     function renderContourLines(group, contourResults, colorScale, gridWidth, gridHeight, xScale, yScale) {
-      contourResults.forEach(result => {
+      // 确保contourResults是数组
+      const resultsArray = Array.isArray(contourResults) ? contourResults : [contourResults];
+      
+      resultsArray.forEach(result => {
         const transformedCoordinates = transformContourCoordinates(
           result.coordinates, 
           gridWidth, 
@@ -413,8 +416,12 @@
       // Create path generator for bands
       const pathGenerator = d3.geoPath();
       
-      bandResults.forEach((result, i) => {
-        const middleValue = (result.lowerValue + result.upperValue) / 2;
+      // 确保bandResults是数组
+      const resultsArray = Array.isArray(bandResults) ? bandResults : [bandResults];
+      
+      resultsArray.forEach((result, i) => {
+        // 使用阈值来确定颜色
+        const color = colorScale(result.threshold);
         const transformedCoordinates = transformBandCoordinates(
           result.coordinates, 
           gridWidth, 
@@ -438,7 +445,7 @@
           .enter()
           .append('path')
           .attr('d', pathGenerator)
-          .attr('fill', colorScale(middleValue))
+          .attr('fill', color)
           .attr('stroke', '#000')
           .attr('stroke-width', 0.5)
           .attr('stroke-opacity', 0.3)
@@ -514,18 +521,11 @@
       
       // Generate appropriate thresholds
       const thresholds = generateThresholds(thresholdCount);
-      debugger
       const bandThresholds = generateThresholds(bandCount + 1);
       
       if (currentMode === 'contours' || currentMode === 'combined') {
-        // Generate contour lines
-        const contourResults = [];
-        
-        // Generate contours for each threshold
-        thresholds.forEach(threshold => {
-          const result = generateContours(gridData, threshold);
-          contourResults.push(result);
-        });
+        // 一次性生成所有阈值的等值线
+        const contourResults = generateContours(gridData, thresholds);
         
         // Render contour lines
         if (currentMode === 'contours') {
@@ -536,16 +536,8 @@
       }
       
       if (currentMode === 'bands' || currentMode === 'combined') {
-        // Generate contour bands
-        const bandResults = [];
-        
-        for (let i = 0; i < bandThresholds.length - 1; i++) {
-          const lowerThreshold = bandThresholds[i];
-          const upperThreshold = bandThresholds[i + 1];
-          
-          const bandResult = generateContourBands(gridData, lowerThreshold, upperThreshold);
-          bandResults.push(bandResult);
-        }
+        // 一次性生成所有阈值的等值面，使用与等值线相同的阈值
+        const bandResults = generateContourBands(gridData, bandThresholds);
         
         // Render contour bands
         if (currentMode === 'bands') {

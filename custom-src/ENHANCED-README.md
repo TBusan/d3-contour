@@ -1,111 +1,210 @@
-# Enhanced Contour 增强版等值线生成器
+# Enhanced Contour
 
-基于 Marching Squares 算法实现的增强版等值线和等值面生成器。参考了 openhome.cc 的 Marching Squares 系列文章，并在 d3-contour 基础上进行了改进。
+增强版等值线和等值面生成库，基于Marching Squares算法。
 
-## 特点
+## 特性
 
-1. **完善的 null 值处理**：可以处理数据中的 null 或 NaN 值，避免生成错误的等值线
-2. **平滑等值线**：使用平滑曲线插值和 Chaikin 算法生成更流畅的等值线
-3. **鞍点二义性处理**：通过计算单元格中心值解决鞍点情况（case 5 和 case 10）的二义性问题
-4. **改进的边界处理**：确保等值线在边界处正确闭合
-5. **完善的拓扑关系**：正确处理等值面的内外环关系
+- 生成等值线（Contour Lines）
+- 生成等值面（Contour Bands）
+- 支持一次性生成多个阈值的等值线和等值面
+- 处理缺失数据（null值）
+- 高性能实现
+- 支持复杂拓扑结构
 
-## 最近更新
+## 安装
 
-- **等值面渲染修复**：修复了等值面的渲染范围和闭合构造问题
-  - 添加了数据边界轮廓作为最外层轮廓
-  - 改进了内外环关系的处理逻辑
-  - 确保环的正确闭合和方向
-  - 处理边界外的区域，确保完整覆盖
-
-## 主要API
-
-### generateContours(data, threshold)
-
-生成指定阈值的等值线。
-
-参数：
-- `data`: 二维数组，表示数据网格
-- `threshold`: 数值，表示等值线的阈值
-
-返回：
-- GeoJSON格式的等值线对象，类型为 "MultiLineString"
-
-### generateContourBands(data, lowerThreshold, upperThreshold)
-
-生成指定阈值范围的等值面。
-
-参数：
-- `data`: 二维数组，表示数据网格
-- `lowerThreshold`: 数值，表示等值面的下阈值
-- `upperThreshold`: 数值，表示等值面的上阈值
-
-返回：
-- GeoJSON格式的等值面对象，类型为 "MultiPolygon"
-
-## 使用示例
-
-```javascript
-import { generateContours, generateContourBands } from './enhanced-contour.js';
-
-// 示例数据
-const data = [
-  [0.0, 0.2, 0.4, 0.6, 0.8],
-  [0.2, 0.4, 0.6, 0.8, 1.0],
-  [0.4, 0.6, null, 1.0, 1.2],
-  [0.6, 0.8, 1.0, 1.2, 1.4],
-  [0.8, 1.0, 1.2, 1.4, 1.6]
-];
-
-// 生成等值线
-const contours = generateContours(data, 0.5);
-console.log(`生成了${contours.coordinates.length}条等值线`);
-
-// 生成等值面
-const bands = generateContourBands(data, 0.5, 1.0);
-console.log(`生成了${bands.coordinates.length}个等值面`);
+```bash
+npm install enhanced-contour
 ```
 
-## 与D3-Contour的区别
+## 使用方法
 
-1. **null值处理**：d3-contour不能很好地处理null值，而enhanced-contour可以
-2. **平滑曲线**：enhanced-contour生成的等值线更加平滑
-3. **鞍点处理**：enhanced-contour通过计算中心值解决鞍点二义性
-4. **边界处理**：enhanced-contour改进了边界处理，确保轮廓正确闭合
-5. **等值面处理**：enhanced-contour正确处理等值面的内外环关系和边界区域
+### 导入
 
-## 实现细节
+```javascript
+import { generateContours, generateContourBands, generateContourAndBands } from 'enhanced-contour';
+```
 
-### Marching Squares算法
+### 生成等值线
 
-Marching Squares是一种生成等值线的经典算法。它将数据网格分成一个个小方格（单元格），并根据单元格四个角点的值与阈值的关系，确定等值线如何穿过该单元格。
+```javascript
+// 准备二维数据
+const data = [
+  [10, 20, 30, 40],
+  [15, 25, 35, 45],
+  [20, 30, 40, 50],
+  [25, 35, 45, 55]
+];
 
-### 鞍点处理
+// 单一阈值的等值线
+const singleContour = generateContours(data, 30);
 
-当单元格的对角两个角点高于阈值，另外两个角点低于阈值时，会出现鞍点。这种情况下，等值线的连接方式存在二义性。enhanced-contour通过计算单元格中心点的值来解决这个问题。
+// 多个阈值的等值线
+const thresholds = [20, 30, 40];
+const multipleContours = generateContours(data, thresholds);
+```
 
-### 平滑算法
+### 生成等值面
 
-enhanced-contour使用两种方法使等值线更平滑：
-1. 在插值计算等值线交点时使用平滑曲线插值
-2. 对生成的等值线应用Chaikin平滑算法
+```javascript
+// 单一阈值的等值面
+const singleBand = generateContourBands(data, 30);
 
-### 等值面生成
+// 多个阈值的等值面
+const thresholds = [20, 30, 40];
+const multipleBands = generateContourBands(data, thresholds);
+```
 
-等值面是由两个阈值之间的区域形成的。enhanced-contour通过以下步骤生成等值面：
-1. 生成下阈值的等值线作为外环
-2. 生成上阈值的等值线作为内环（洞）
-3. 确定内外环的包含关系
-4. 处理边界区域，确保完整覆盖数据范围
+### 同时生成等值线和等值面
 
-## 更多示例
+```javascript
+// 单一阈值
+const singleResult = generateContourAndBands(data, 30);
+const { contours: singleContour, bands: singleBand } = singleResult;
 
-详见 `enhanced-example.js` 文件，其中包含了等值线、等值面以及多级等值面的生成和绘制示例。
+// 多个阈值
+const thresholds = [20, 30, 40];
+const multipleResult = generateContourAndBands(data, thresholds);
+const { contours: multipleContours, bands: multipleBands } = multipleResult;
+```
 
-## 参考资料
+## 返回数据格式
 
-- [Marching squares（一）](https://openhome.cc/Gossip/P5JS/MarchingSquares.html)
-- [Marching squares（二）](https://openhome.cc/Gossip/P5JS/MarchingSquares2.html)
-- [Marching squares（三）](https://openhome.cc/Gossip/P5JS/MarchingSquares3.html)
-- [Wikipedia: Marching squares](https://en.wikipedia.org/wiki/Marching_squares)
-- [Chaikin's Algorithm for Curve Smoothing](https://www.cs.unc.edu/~dm/UNC/COMP258/LECTURES/Chaikins-Algorithm.pdf) 
+### 单一阈值的等值线
+
+```javascript
+{
+  type: "MultiLineString",
+  threshold: 30,
+  coordinates: [
+    [[x1, y1], [x2, y2], ...], // 第一条等值线
+    [[x1, y1], [x2, y2], ...], // 第二条等值线
+    // ...
+  ]
+}
+```
+
+### 多个阈值的等值线
+
+```javascript
+[
+  {
+    type: "MultiLineString",
+    threshold: 20,
+    coordinates: [
+      [[x1, y1], [x2, y2], ...], // 第一条等值线
+      [[x2, y1], [x2, y2], ...], // 第二条等值线
+      // ...
+    ]
+  },
+  {
+    type: "MultiLineString",
+    threshold: 30,
+    coordinates: [
+      // ...
+    ]
+  },
+  // ...
+]
+```
+
+### 单一阈值的等值面
+
+```javascript
+{
+  type: "MultiPolygon",
+  threshold: 30,
+  coordinates: [
+    [
+      [[x1, y1], [x2, y2], ...], // 外环
+      [[x3, y3], [x4, y4], ...], // 内环（洞）
+      // ...
+    ],
+    // 更多多边形
+  ]
+}
+```
+
+### 多个阈值的等值面
+
+```javascript
+[
+  {
+    type: "MultiPolygon",
+    threshold: 20,
+    coordinates: [
+      [
+        [[x1, y1], [x2, y2], ...], // 外环
+        [[x3, y3], [x4, y4], ...], // 内环（洞）
+        // ...
+      ],
+      // 更多多边形
+    ]
+  },
+  {
+    type: "MultiPolygon",
+    threshold: 30,
+    coordinates: [
+      // ...
+    ]
+  },
+  // ...
+]
+```
+
+## 高级用法
+
+### 生成自定义阈值的等值线
+
+```javascript
+// 计算数据范围
+const values = data.flat().filter(v => v != null);
+const min = Math.min(...values);
+const max = Math.max(...values);
+
+// 生成10个均匀分布的阈值
+const thresholdCount = 10;
+const thresholds = Array.from({ length: thresholdCount }, (_, i) => 
+  min + (max - min) * i / (thresholdCount - 1)
+);
+
+// 生成等值线和等值面
+const contours = generateContours(data, thresholds);
+const bands = generateContourBands(data, thresholds);
+```
+
+### 渲染等值线和等值面
+
+```javascript
+// 渲染等值线
+contours.forEach((contour, i) => {
+  // 使用不同颜色渲染不同阈值的等值线
+  const color = getColorForThreshold(contour.threshold);
+  
+  contour.coordinates.forEach(line => {
+    // 使用Canvas或SVG渲染线条
+    drawLine(line, color);
+  });
+});
+
+// 渲染等值面
+bands.forEach((band, i) => {
+  // 使用不同颜色渲染不同阈值的等值面
+  const color = getColorForThreshold(band.threshold);
+  
+  band.coordinates.forEach(polygon => {
+    // 使用Canvas或SVG渲染多边形
+    drawPolygon(polygon, color);
+  });
+});
+```
+
+## 性能优化
+
+- 对于大型数据集，可以先进行降采样
+- 可以使用Web Worker在后台线程中生成等值线和等值面
+- 对于交互式应用，可以根据视口范围只处理可见区域的数据
+
+## 许可证
+
+MIT 

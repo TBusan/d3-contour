@@ -2,7 +2,7 @@
  * Enhanced Contour 示例代码
  * 展示如何使用增强版等值线和等值面生成器
  */
-import { generateContours, generateContourBands } from './enhanced-contour.js';
+import { generateContours, generateContourBands, generateContourAndBands } from './enhanced-contour.js';
 
 /**
  * 生成测试数据
@@ -31,149 +31,273 @@ function generateTestData(width = 100, height = 100) {
 
 /**
  * 等值线示例
- * @returns {Object} 等值线结果
+ * @param {HTMLCanvasElement} canvas 画布元素
  */
-function contourExample() {
+function contourExample(canvas) {
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+  
   // 生成测试数据
   const data = generateTestData();
   
-  // 设置等值线阈值
-  const threshold = 50;
+  // 计算数据范围
+  let min = Infinity;
+  let max = -Infinity;
   
-  // 生成等值线
-  const contours = generateContours(data, threshold);
+  for (let y = 0; y < data.length; y++) {
+    for (let x = 0; x < data[0].length; x++) {
+      const value = data[y][x];
+      if (value != null) {
+        min = Math.min(min, value);
+        max = Math.max(max, value);
+      }
+    }
+  }
   
-  console.log(`生成了${contours.coordinates.length}条等值线，阈值为${threshold}`);
+  // 生成多个阈值
+  const thresholds = [];
+  const thresholdCount = 10;
+  for (let i = 0; i < thresholdCount; i++) {
+    thresholds.push(min + (max - min) * i / (thresholdCount - 1));
+  }
   
-  return contours;
+  // 一次性生成所有阈值的等值线
+  const contours = generateContours(data, thresholds);
+  
+  // 清空画布
+  ctx.clearRect(0, 0, width, height);
+  
+  // 绘制等值线
+  ctx.lineWidth = 1;
+  
+  contours.forEach((contour, i) => {
+    // 根据阈值设置不同的颜色
+    const hue = 240 * (1 - i / (thresholdCount - 1));
+    ctx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+    
+    contour.coordinates.forEach(line => {
+      ctx.beginPath();
+      
+      line.forEach((point, j) => {
+        // 将数据坐标映射到画布坐标
+        const canvasX = point[0] / data[0].length * width;
+        const canvasY = point[1] / data.length * height;
+        
+        if (j === 0) {
+          ctx.moveTo(canvasX, canvasY);
+        } else {
+          ctx.lineTo(canvasX, canvasY);
+        }
+      });
+      
+      ctx.stroke();
+    });
+  });
 }
 
 /**
  * 等值面示例
- * @returns {Object} 等值面结果
+ * @param {HTMLCanvasElement} canvas 画布元素
  */
-function contourBandExample() {
+function contourBandExample(canvas) {
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+  
   // 生成测试数据
   const data = generateTestData();
   
-  // 设置等值面的上下阈值
-  const lowerThreshold = 30;
-  const upperThreshold = 70;
+  // 计算数据范围
+  let min = Infinity;
+  let max = -Infinity;
   
-  // 生成等值面
-  const bands = generateContourBands(data, lowerThreshold, upperThreshold);
-  
-  console.log(`生成了${bands.coordinates.length}个等值面，阈值范围为[${lowerThreshold}, ${upperThreshold}]`);
-  
-  return bands;
-}
-
-/**
- * 多级等值面示例
- * @returns {Array<Object>} 多个等值面结果
- */
-function multiLevelContourBandsExample() {
-  // 生成测试数据
-  const data = generateTestData();
-  
-  // 设置多级阈值
-  const thresholds = [0, 20, 40, 60, 80, 100];
-  
-  // 生成多级等值面
-  const bands = [];
-  for (let i = 0; i < thresholds.length - 1; i++) {
-    const lowerThreshold = thresholds[i];
-    const upperThreshold = thresholds[i + 1];
-    
-    const band = generateContourBands(data, lowerThreshold, upperThreshold);
-    bands.push(band);
-    
-    console.log(`生成了${band.coordinates.length}个等值面，阈值范围为[${lowerThreshold}, ${upperThreshold}]`);
+  for (let y = 0; y < data.length; y++) {
+    for (let x = 0; x < data[0].length; x++) {
+      const value = data[y][x];
+      if (value != null) {
+        min = Math.min(min, value);
+        max = Math.max(max, value);
+      }
+    }
   }
   
-  return bands;
-}
-
-/**
- * 在Canvas上绘制等值线
- * @param {CanvasRenderingContext2D} ctx Canvas上下文
- * @param {Object} contours 等值线数据
- * @param {Number} scale 缩放比例
- * @param {String} color 线条颜色
- */
-function drawContours(ctx, contours, scale = 1, color = 'blue') {
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
+  // 生成多个阈值
+  const thresholds = [];
+  const thresholdCount = 10;
+  for (let i = 0; i < thresholdCount; i++) {
+    thresholds.push(min + (max - min) * i / (thresholdCount - 1));
+  }
   
-  contours.coordinates.forEach(contour => {
-    ctx.beginPath();
+  // 一次性生成所有阈值的等值面
+  const bands = generateContourBands(data, thresholds);
+  
+  // 清空画布
+  ctx.clearRect(0, 0, width, height);
+  
+  // 渲染等值面
+  bands.forEach((band, i) => {
+    // 根据阈值设置不同的颜色
+    const hue = 240 * (1 - i / (thresholdCount - 1));
+    ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.5)`;
+    ctx.strokeStyle = `hsla(${hue}, 100%, 30%, 0.8)`;
     
-    contour.forEach((point, i) => {
-      const [x, y] = point;
-      if (i === 0) {
-        ctx.moveTo(x * scale, y * scale);
-      } else {
-        ctx.lineTo(x * scale, y * scale);
+    band.coordinates.forEach(polygon => {
+      // 绘制多边形
+      ctx.beginPath();
+      
+      // 绘制外环
+      const outerRing = polygon[0];
+      outerRing.forEach((point, j) => {
+        // 将数据坐标映射到画布坐标
+        const canvasX = point[0] / data[0].length * width;
+        const canvasY = point[1] / data.length * height;
+        
+        if (j === 0) {
+          ctx.moveTo(canvasX, canvasY);
+        } else {
+          ctx.lineTo(canvasX, canvasY);
+        }
+      });
+      
+      // 绘制内环（洞）
+      for (let r = 1; r < polygon.length; r++) {
+        const innerRing = polygon[r];
+        
+        // 移动到内环的第一个点
+        const firstPoint = innerRing[0];
+        const firstX = firstPoint[0] / data[0].length * width;
+        const firstY = firstPoint[1] / data.length * height;
+        ctx.moveTo(firstX, firstY);
+        
+        // 绘制内环的其余部分
+        for (let j = 1; j < innerRing.length; j++) {
+          const point = innerRing[j];
+          const canvasX = point[0] / data[0].length * width;
+          const canvasY = point[1] / data.length * height;
+          ctx.lineTo(canvasX, canvasY);
+        }
       }
+      
+      ctx.fill();
+      ctx.stroke();
     });
-    
-    ctx.stroke();
   });
 }
 
 /**
- * 在Canvas上绘制等值面
- * @param {CanvasRenderingContext2D} ctx Canvas上下文
- * @param {Object} bands 等值面数据
- * @param {Number} scale 缩放比例
- * @param {String} fillColor 填充颜色
- * @param {String} strokeColor 边框颜色
+ * 组合等值线和等值面示例
+ * @param {HTMLCanvasElement} canvas 画布元素
  */
-function drawContourBands(ctx, bands, scale = 1, fillColor = 'rgba(0, 0, 255, 0.2)', strokeColor = 'rgba(0, 0, 255, 0.5)') {
-  ctx.fillStyle = fillColor;
-  ctx.strokeStyle = strokeColor;
-  ctx.lineWidth = 1;
+function combinedExample(canvas) {
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
   
-  bands.coordinates.forEach(polygon => {
-    ctx.beginPath();
-    
-    // 绘制外环
-    const outerRing = polygon[0];
-    outerRing.forEach((point, i) => {
-      const [x, y] = point;
-      if (i === 0) {
-        ctx.moveTo(x * scale, y * scale);
-      } else {
-        ctx.lineTo(x * scale, y * scale);
-      }
-    });
-    
-    // 绘制内环（洞）
-    for (let i = 1; i < polygon.length; i++) {
-      const hole = polygon[i];
-      
-      // 移动到洞的起点
-      if (hole.length > 0) {
-        ctx.moveTo(hole[0][0] * scale, hole[0][1] * scale);
-        
-        // 绘制洞的轮廓
-        for (let j = 1; j < hole.length; j++) {
-          ctx.lineTo(hole[j][0] * scale, hole[j][1] * scale);
-        }
+  // 生成测试数据
+  const data = generateTestData();
+  
+  // 计算数据范围
+  let min = Infinity;
+  let max = -Infinity;
+  
+  for (let y = 0; y < data.length; y++) {
+    for (let x = 0; x < data[0].length; x++) {
+      const value = data[y][x];
+      if (value != null) {
+        min = Math.min(min, value);
+        max = Math.max(max, value);
       }
     }
+  }
+  
+  // 生成多个阈值
+  const thresholds = [];
+  const thresholdCount = 10;
+  for (let i = 0; i < thresholdCount; i++) {
+    thresholds.push(min + (max - min) * i / (thresholdCount - 1));
+  }
+  
+  // 一次性生成所有阈值的等值线和等值面
+  const { contours, bands } = generateContourAndBands(data, thresholds);
+  
+  // 清空画布
+  ctx.clearRect(0, 0, width, height);
+  
+  // 先绘制等值面
+  bands.forEach((band, i) => {
+    // 根据阈值设置不同的颜色
+    const hue = 240 * (1 - i / (thresholdCount - 1));
+    ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.3)`;
     
-    ctx.fill();
-    ctx.stroke();
+    band.coordinates.forEach(polygon => {
+      // 绘制多边形
+      ctx.beginPath();
+      
+      // 绘制外环
+      const outerRing = polygon[0];
+      outerRing.forEach((point, j) => {
+        // 将数据坐标映射到画布坐标
+        const canvasX = point[0] / data[0].length * width;
+        const canvasY = point[1] / data.length * height;
+        
+        if (j === 0) {
+          ctx.moveTo(canvasX, canvasY);
+        } else {
+          ctx.lineTo(canvasX, canvasY);
+        }
+      });
+      
+      // 绘制内环（洞）
+      for (let r = 1; r < polygon.length; r++) {
+        const innerRing = polygon[r];
+        
+        // 移动到内环的第一个点
+        const firstPoint = innerRing[0];
+        const firstX = firstPoint[0] / data[0].length * width;
+        const firstY = firstPoint[1] / data.length * height;
+        ctx.moveTo(firstX, firstY);
+        
+        // 绘制内环的其余部分
+        for (let j = 1; j < innerRing.length; j++) {
+          const point = innerRing[j];
+          const canvasX = point[0] / data[0].length * width;
+          const canvasY = point[1] / data.length * height;
+          ctx.lineTo(canvasX, canvasY);
+        }
+      }
+      
+      ctx.fill();
+    });
+  });
+  
+  // 再绘制等值线
+  ctx.lineWidth = 1;
+  
+  contours.forEach((contour, i) => {
+    // 根据阈值设置不同的颜色
+    const hue = 240 * (1 - i / (thresholdCount - 1));
+    ctx.strokeStyle = `hsl(${hue}, 100%, 30%)`;
+    
+    contour.coordinates.forEach(line => {
+      ctx.beginPath();
+      
+      line.forEach((point, j) => {
+        // 将数据坐标映射到画布坐标
+        const canvasX = point[0] / data[0].length * width;
+        const canvasY = point[1] / data.length * height;
+        
+        if (j === 0) {
+          ctx.moveTo(canvasX, canvasY);
+        } else {
+          ctx.lineTo(canvasX, canvasY);
+        }
+      });
+      
+      ctx.stroke();
+    });
   });
 }
 
 // 导出示例函数
-export {
-  generateTestData,
-  contourExample,
-  contourBandExample,
-  multiLevelContourBandsExample,
-  drawContours,
-  drawContourBands
-}; 
+export { contourExample, contourBandExample, combinedExample, generateTestData }; 

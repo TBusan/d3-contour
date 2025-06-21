@@ -435,6 +435,7 @@ function calculateArea(ring) {
 
 /**
  * 确定一个点是否在多边形内部
+ * 这个函数用于getPointInsideRing函数的结果验证
  * @param {Array<Number>} point 要测试的点
  * @param {Array<Array<Number>>} polygon 多边形顶点数组
  * @returns {Boolean} 是否在内部
@@ -457,55 +458,109 @@ function pointInPolygon(point, polygon) {
 }
 
 /**
+ * 获取一个环内部的点
+ * @param {Array<Array<Number>>} ring 环的顶点数组
+ * @returns {Array<Number>} 环内部的点
+ */
+function getPointInsideRing(ring) {
+  // 简单方法：取所有点的平均值作为内部点
+  let sumX = 0;
+  let sumY = 0;
+  
+  for (const point of ring) {
+    sumX += point[0];
+    sumY += point[1];
+  }
+  
+  const centerPoint = [sumX / ring.length, sumY / ring.length];
+  
+  // 验证中心点是否在环内，如果不在，尝试找一个在环内的点
+  if (!pointInPolygon(centerPoint, ring)) {
+    // 尝试使用环上的点略微向内移动
+    for (let i = 0; i < ring.length - 1; i++) {
+      const p1 = ring[i];
+      const p2 = ring[(i + 1) % ring.length];
+      
+      // 计算中点并向环内部偏移一点
+      const midX = (p1[0] + p2[0]) / 2;
+      const midY = (p1[1] + p2[1]) / 2;
+      
+      // 向环的中心方向偏移
+      const offsetX = (centerPoint[0] - midX) * 0.1;
+      const offsetY = (centerPoint[1] - midY) * 0.1;
+      
+      const testPoint = [midX + offsetX, midY + offsetY];
+      
+      if (pointInPolygon(testPoint, ring)) {
+        return testPoint;
+      }
+    }
+  }
+  
+  // 如果无法找到内部点，返回中心点（可能不准确）
+  return centerPoint;
+}
+
+/**
  * 主等值线生成函数
  * @param {Array<Array<Number>>} data 二维数据数组
- * @param {Number} threshold 阈值
- * @returns {Object} GeoJSON格式的等值线
+ * @param {Array<Number>|Number} thresholds 阈值数组或单一阈值
+ * @returns {Array<Object>|Object} GeoJSON格式的等值线数组或单个等值线
  */
-export function generateContours(data, threshold) {
+export function generateContours(data, thresholds) {
   if (!data || data.length === 0 || data[0].length === 0) {
     return { type: "MultiLineString", coordinates: [] };
   }
   
-  // 1. 将数据映射为角点
-  const corners = mapToCorners(data, threshold);
+  // 如果传入的是单一阈值，转换为数组
+  const isArray = Array.isArray(thresholds);
+  const thresholdArray = isArray ? thresholds : [thresholds];
   
-  // 2. 创建细胞数据
-  const cells = createCells(corners);
+  // 为每个阈值生成等值线
+  const results = thresholdArray.map(threshold => {
+    // 1. 将数据映射为角点
+    const corners = mapToCorners(data, threshold);
+    
+    // 2. 创建细胞数据
+    const cells = createCells(corners);
+    
+    // 3. 为每个细胞生成等值线线段
+    const lineSegments = cells.map(cell => generateIsolines(cell, threshold));
+    
+    // 4. 拼接线段为闭合轮廓
+    const contours = stitchContours(lineSegments);
+    
+    return {
+      type: "MultiLineString",
+      threshold: threshold,
+      coordinates: contours
+    };
+  });
   
-  // 3. 为每个细胞生成等值线线段
-  const lineSegments = cells.map(cell => generateIsolines(cell, threshold));
-  
-  // 4. 拼接线段为闭合轮廓
-  const contours = stitchContours(lineSegments);
-  
-  return {
-    type: "MultiLineString",
-    threshold: threshold,
-    coordinates: contours
-  };
+  // 如果原始输入是单一阈值，返回单个结果，否则返回结果数组
+  return isArray ? results : results[0];
 }
 
 /**
  * 生成等值面（带状区域）
  * @param {Array<Array<Number>>} data 二维数据数组
- * @param {Number} lowerThreshold 下阈值
- * @param {Number} upperThreshold 上阈值
- * @returns {Object} GeoJSON格式的等值面
+ * @param {Array<Number>|Number} thresholds 阈值数组或单一阈值
+ * @returns {Array<Object>|Object} GeoJSON格式的等值面数组或单个等值面
  */
-export function generateContourBands(data, lowerThreshold, upperThreshold) {
+export function generateContourBands(data, thresholds) {
   if (!data || data.length === 0 || data[0].length === 0) {
     return { type: "MultiPolygon", coordinates: [] };
   }
   
-  // 获取下阈值的等值线
-  const lowerContour = generateContours(data, lowerThreshold);
+  // 如果传入的是单一阈值，转换为数组
+  const isArray = Array.isArray(thresholds);
+  const thresholdArray = isArray ? thresholds : [thresholds];
   
-  // 获取上阈值的等值线
-  const upperContour = generateContours(data, upperThreshold);
+  // 确保阈值数组已排序
+  const sortedThresholds = [...thresholdArray].sort((a, b) => a - b);
   
-  // 创建等值面
-  const polygons = [];
+  // 为每个阈值生成等值面
+  const results = [];
   
   // 创建数据边界轮廓
   const width = data[0].length;
@@ -518,174 +573,119 @@ export function generateContourBands(data, lowerThreshold, upperThreshold) {
     [0, 0]
   ];
   
-  // 创建一个映射，标记数据点是否在下阈值以上
-  const isAboveLower = [];
-  for (let y = 0; y < height; y++) {
-    const row = [];
-    for (let x = 0; x < width; x++) {
-      const value = data[y][x];
-      row.push(value != null && value >= lowerThreshold);
-    }
-    isAboveLower.push(row);
-  }
+  // 获取所有等值线
+  const allContours = generateContours(data, sortedThresholds);
   
-  // 创建一个映射，标记数据点是否在上阈值以下
-  const isBelowUpper = [];
-  for (let y = 0; y < height; y++) {
-    const row = [];
-    for (let x = 0; x < width; x++) {
-      const value = data[y][x];
-      row.push(value != null && value < upperThreshold);
-    }
-    isBelowUpper.push(row);
-  }
-  
-  // 处理下阈值轮廓作为外环
-  if (lowerContour.coordinates.length > 0) {
-    for (const lowerRing of lowerContour.coordinates) {
-      // 确保环是闭合的
-      const closedLowerRing = [...lowerRing];
-      if (closedLowerRing.length > 0 && !pointsAreClose(closedLowerRing[0], closedLowerRing[closedLowerRing.length - 1])) {
-        closedLowerRing.push([...closedLowerRing[0]]);
-      }
-      
-      // 计算面积以确保方向正确（外环应为顺时针）
-      const area = calculateArea(closedLowerRing);
-      if (area < 0) {
-        // 如果是逆时针，反转为顺时针
-        closedLowerRing.reverse();
-      }
-      
-      // 创建多边形，初始只有外环
-      const polygon = [closedLowerRing];
-      
-      // 查找此外环内的所有上阈值轮廓作为内环
-      for (const upperRing of upperContour.coordinates) {
-        // 确保环是闭合的
-        const closedUpperRing = [...upperRing];
-        if (closedUpperRing.length > 0 && !pointsAreClose(closedUpperRing[0], closedUpperRing[closedUpperRing.length - 1])) {
-          closedUpperRing.push([...closedUpperRing[0]]);
-        }
-        
-        // 计算面积以确保方向正确（内环应为逆时针）
-        const upperArea = calculateArea(closedUpperRing);
-        if (upperArea > 0) {
-          // 如果是顺时针，反转为逆时针
-          closedUpperRing.reverse();
-        }
-        
-        // 检查上轮廓是否在下轮廓内部
-        if (closedUpperRing.length > 0) {
-          // 使用多个点来确定是否在内部，增加可靠性
-          let insideCount = 0;
-          const testPoints = [
-            closedUpperRing[0],
-            closedUpperRing[Math.floor(closedUpperRing.length / 3)],
-            closedUpperRing[Math.floor(closedUpperRing.length * 2 / 3)]
-          ];
-          
-          for (const testPoint of testPoints) {
-            if (pointInPolygon(testPoint, closedLowerRing)) {
-              insideCount++;
-            }
-          }
-          
-          // 如果大多数测试点在内部，则认为是内环
-          if (insideCount >= 2) {
-            polygon.push(closedUpperRing);
-          }
-        }
-      }
-      
-      polygons.push(polygon);
-    }
-  }
-  
-  // 处理边界情况：如果没有下阈值轮廓，或者需要处理外部区域
-  if (polygons.length === 0) {
-    // 检查是否整个区域都在阈值范围内
-    let allInRange = true;
-    let anyInRange = false;
+  // 生成每个阈值的等值面
+  for (let i = 0; i < sortedThresholds.length; i++) {
+    const threshold = sortedThresholds[i];
+    const contour = allContours[i];
     
+    // 创建等值面
+    const polygons = [];
+    
+    // 创建一个映射，标记数据点是否在阈值以上
+    const isAboveThreshold = [];
     for (let y = 0; y < height; y++) {
+      const row = [];
       for (let x = 0; x < width; x++) {
         const value = data[y][x];
-        if (value != null) {
-          if (value >= lowerThreshold && value < upperThreshold) {
-            anyInRange = true;
-          } else {
-            allInRange = false;
-          }
-        }
+        row.push(value != null && value >= threshold);
       }
+      isAboveThreshold.push(row);
     }
     
-    // 如果整个区域都在范围内，使用边界作为外环
-    if (allInRange || anyInRange) {
-      // 创建边界多边形
-      const boundaryPolygon = [boundaryRing];
-      
-      // 添加所有上阈值轮廓作为内环
-      for (const upperRing of upperContour.coordinates) {
+    // 处理等值线轮廓
+    if (contour.coordinates.length > 0) {
+      for (const ring of contour.coordinates) {
         // 确保环是闭合的
-        const closedUpperRing = [...upperRing];
-        if (closedUpperRing.length > 0 && !pointsAreClose(closedUpperRing[0], closedUpperRing[closedUpperRing.length - 1])) {
-          closedUpperRing.push([...closedUpperRing[0]]);
+        const closedRing = [...ring];
+        if (closedRing.length > 0 && !pointsAreClose(closedRing[0], closedRing[closedRing.length - 1])) {
+          closedRing.push([...closedRing[0]]);
         }
         
-        // 确保内环为逆时针方向
-        const upperArea = calculateArea(closedUpperRing);
-        if (upperArea > 0) {
-          closedUpperRing.reverse();
+        // 计算面积以确保方向正确
+        const area = calculateArea(closedRing);
+        
+        // 确定这个轮廓是表示高于阈值的区域还是低于阈值的区域
+        // 我们需要取一个点，检查它是否高于阈值
+        const testPoint = getPointInsideRing(closedRing);
+        const gridX = Math.floor(testPoint[0]);
+        const gridY = Math.floor(testPoint[1]);
+        
+        // 检查这个点是否在网格范围内
+        let isHighSide = false;
+        if (gridX >= 0 && gridX < width && gridY >= 0 && gridY < height) {
+          isHighSide = isAboveThreshold[gridY][gridX];
         }
         
-        boundaryPolygon.push(closedUpperRing);
+        // 根据是高侧还是低侧决定如何处理这个轮廓
+        if (isHighSide) {
+          // 高侧区域 - 这个轮廓内部的点高于阈值
+          // 如果面积为负（逆时针），保持不变作为外环
+          // 如果面积为正（顺时针），反转为逆时针作为外环
+          if (area > 0) {
+            closedRing.reverse();
+          }
+          
+          // 将这个轮廓作为外环创建一个新的多边形
+          polygons.push([closedRing]);
+        } else {
+          // 低侧区域 - 这个轮廓内部的点低于阈值
+          // 如果面积为正（顺时针），保持不变作为外环
+          // 如果面积为负（逆时针），反转为顺时针作为外环
+          if (area < 0) {
+            closedRing.reverse();
+          }
+          
+          // 将这个轮廓作为外环创建一个新的多边形
+          polygons.push([closedRing]);
+        }
+      }
+    } else {
+      // 如果没有等值线，检查整个区域是否都在阈值的一侧
+      let allAbove = true;
+      
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const value = data[y][x];
+          if (value != null) {
+            if (value < threshold) {
+              allAbove = false;
+              break;
+            }
+          }
+        }
+        if (!allAbove) break;
       }
       
-      polygons.push(boundaryPolygon);
+      // 如果所有点都在阈值以上，创建一个覆盖整个区域的多边形
+      if (allAbove) {
+        polygons.push([boundaryRing]);
+      }
+      // 如果所有点都在阈值以下，不创建多边形（返回空）
     }
+    
+    results.push({
+      type: "MultiPolygon",
+      threshold: threshold,
+      coordinates: polygons
+    });
   }
   
-  // 如果仍然没有多边形，检查是否有特殊情况需要处理
-  if (polygons.length === 0 && upperContour.coordinates.length > 0) {
-    // 尝试使用上阈值轮廓的补集作为等值面
-    for (const upperRing of upperContour.coordinates) {
-      // 确保环是闭合的
-      const closedUpperRing = [...upperRing];
-      if (closedUpperRing.length > 0 && !pointsAreClose(closedUpperRing[0], closedUpperRing[closedUpperRing.length - 1])) {
-        closedUpperRing.push([...closedUpperRing[0]]);
-      }
-      
-      // 计算面积以确保方向正确
-      const area = calculateArea(closedUpperRing);
-      if (area > 0) {
-        // 如果是顺时针，反转为逆时针（作为内环）
-        closedUpperRing.reverse();
-      }
-      
-      // 创建一个使用边界作为外环，上阈值轮廓作为内环的多边形
-      polygons.push([boundaryRing, closedUpperRing]);
-    }
-  }
-  
-  return {
-    type: "MultiPolygon",
-    lowerValue: lowerThreshold,
-    upperValue: upperThreshold,
-    coordinates: polygons
-  };
+  // 如果原始输入是单一阈值，返回单个结果，否则返回结果数组
+  return isArray ? results : results[0];
 }
 
 /**
  * 同时生成等值线和等值面
  * @param {Array<Array<Number>>} data 二维数据数组
- * @param {Number} lowerThreshold 下阈值
- * @param {Number} upperThreshold 上阈值
+ * @param {Array<Number>|Number} thresholds 阈值数组或单一阈值
  * @returns {Object} 包含等值线和等值面的对象
  */
-export function generateContourAndBands(data, lowerThreshold, upperThreshold) {
-  const contours = generateContours(data, lowerThreshold);
-  const bands = generateContourBands(data, lowerThreshold, upperThreshold);
+export function generateContourAndBands(data, thresholds) {
+  const contours = generateContours(data, thresholds);
+  const bands = generateContourBands(data, thresholds);
   
   return {
     contours,
