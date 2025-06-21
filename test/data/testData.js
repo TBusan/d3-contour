@@ -1,4 +1,4 @@
-export const  contourData = {
+export const contourData = {
     "data": {
         "x": [
             3.0,
@@ -2169,4 +2169,4 @@ export const  contourData = {
         "zmin": -92.883639144636,
         "zmax": 940.77999971706
     }
-}
+};
