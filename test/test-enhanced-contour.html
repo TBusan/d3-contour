@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Enhanced Contour Visualization</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    .controls {
+      margin-bottom: 20px;
+      padding: 15px;
+      background-color: #f0f0f0;
+      border-radius: 5px;
+    }
+    .control-group {
+      margin-bottom: 10px;
+    }
+    h1 {
+      margin-top: 0;
+      color: #333;
+    }
+    h2 {
+      color: #555;
+      margin-top: 30px;
+    }
+    label {
+      display: inline-block;
+      width: 150px;
+      font-weight: bold;
+    }
+    input[type="range"] {
+      width: 200px;
+      vertical-align: middle;
+    }
+    .value-display {
+      display: inline-block;
+      width: 50px;
+      text-align: right;
+    }
+    select {
+      padding: 5px;
+      width: 200px;
+    }
+    button {
+      padding: 8px 15px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    .info {
+      font-family: monospace;
+      background-color: #eee;
+      padding: 10px;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+    svg {
+      width: 100%;
+      height: 500px;
+      border: 1px solid #ccc;
+      background-color: #fff;
+    }
+    .contour {
+      stroke: #000;
+      stroke-opacity: 0.8;
+      stroke-width: 1px;
+      fill: none;
+    }
+    .contour-band {
+      stroke: #000;
+      stroke-opacity: 0.1;
+      stroke-width: 0.5px;
+      fill-opacity: 0.7;
+    }
+    .axis path,
+    .axis line {
+      fill: none;
+      stroke: #000;
+      shape-rendering: crispEdges;
+    }
+    .axis text {
+      font-size: 11px;
+    }
+    .legend {
+      font-size: 12px;
+      margin-top: 10px;
+    }
+    .tabs {
+      display: flex;
+      margin-bottom: 10px;
+      gap: 4px;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      background-color: #ddd;
+      border: none;
+      border-radius: 4px 4px 0 0;
+    }
+    .tab.active {
+      background-color: #4CAF50;
+      color: white;
+    }
+    .checkbox-group {
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Enhanced Contour Visualization</h1>
+    <p>Visualizing the test data using the improved enhanced-contour.js implementation</p>
+    
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('contours')">Contour Lines</button>
+      <button class="tab" onclick="switchTab('bands')">Contour Bands</button>
+      <button class="tab" onclick="switchTab('combined')">Combined View</button>
+    </div>
+    
+    <div class="controls">
+      <div class="control-group">
+        <label for="threshold-count">Threshold Count:</label>
+        <input type="range" id="threshold-count" min="5" max="30" value="15">
+        <span id="threshold-count-value" class="value-display">15</span>
+      </div>
+      
+      <div class="control-group band-control">
+        <label for="band-count">Band Count:</label>
+        <input type="range" id="band-count" min="3" max="20" value="10">
+        <span id="band-count-value" class="value-display">10</span>
+      </div>
+      
+      <div class="control-group">
+        <label for="color-scheme">Color Scheme:</label>
+        <select id="color-scheme">
+          <option value="viridis">Viridis</option>
+          <option value="inferno">Inferno</option>
+          <option value="magma">Magma</option>
+          <option value="plasma">Plasma</option>
+          <option value="warm">Warm</option>
+          <option value="cool">Cool</option>
+          <option value="rainbow">Rainbow</option>
+        </select>
+      </div>
+
+      <div class="checkbox-group combined-control" style="display: none;">
+        <label><input type="checkbox" id="show-bands" checked> Show Bands</label>
+        <label><input type="checkbox" id="show-contours" checked> Show Contour Lines</label>
+      </div>
+      
+      <div class="control-group">
+        <button id="update-btn">Update Visualization</button>
+      </div>
+    </div>
+    
+    <div class="visualization">
+      <div id="contours-container" class="viz-container">
+        <h2>Contour Lines</h2>
+        <svg id="contours-svg"></svg>
+      </div>
+      
+      <div id="bands-container" class="viz-container" style="display: none;">
+        <h2>Contour Bands</h2>
+        <svg id="bands-svg"></svg>
+      </div>
+
+      <div id="combined-container" class="viz-container" style="display: none;">
+        <h2>Combined View</h2>
+        <svg id="combined-svg"></svg>
+      </div>
+      
+      <div class="info" id="data-info">
+        Loading data...
+      </div>
+    </div>
+  </div>
+  
+  <script type="module">
+    // Import D3
+    import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+    import { generateContours, generateContourBands, generateContourAndBands } from './tmp2.js';
+    import { contourData } from './data/testData.js';
+    
+    // Reference to SVG and info elements
+    const contoursSvg = d3.select('#contours-svg');
+    const bandsSvg = d3.select('#bands-svg');
+    const combinedSvg = d3.select('#combined-svg');
+    const dataInfo = document.getElementById('data-info');
+    
+    // UI Elements
+    const thresholdCountInput = document.getElementById('threshold-count');
+    const thresholdCountValue = document.getElementById('threshold-count-value');
+    const bandCountInput = document.getElementById('band-count');
+    const bandCountValue = document.getElementById('band-count-value');
+    const colorSchemeSelect = document.getElementById('color-scheme');
+    const showBandsCheckbox = document.getElementById('show-bands');
+    const showContoursCheckbox = document.getElementById('show-contours');
+    const updateBtn = document.getElementById('update-btn');
+    
+    // Update threshold/band count display
+    thresholdCountInput.addEventListener('input', () => {
+      thresholdCountValue.textContent = thresholdCountInput.value;
+    });
+    
+    bandCountInput.addEventListener('input', () => {
+      bandCountValue.textContent = bandCountInput.value;
+    });
+    
+    // Update visualization when checkboxes change
+    showBandsCheckbox.addEventListener('change', updateVisualization);
+    showContoursCheckbox.addEventListener('change', updateVisualization);
+    
+    // Update button click handler
+    updateBtn.addEventListener('click', updateVisualization);
+    
+    // Current visualization mode
+    let currentMode = 'contours';
+    
+    // Make switchTab function available globally
+    window.switchTab = function(mode) {
+      currentMode = mode;
+      
+      // Update tab styling
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelector(`.tab[onclick*="${mode}"]`).classList.add('active');
+      
+      // Show/hide containers
+      document.getElementById('contours-container').style.display = mode === 'contours' ? 'block' : 'none';
+      document.getElementById('bands-container').style.display = mode === 'bands' ? 'block' : 'none';
+      document.getElementById('combined-container').style.display = mode === 'combined' ? 'block' : 'none';
+      
+      // Show/hide controls
+      document.querySelector('.band-control').style.display = mode === 'contours' ? 'none' : 'block';
+      document.querySelector('.combined-control').style.display = mode === 'combined' ? 'block' : 'none';
+      
+      // Update visualization if data is loaded
+      if (contourData) {
+        updateVisualization();
+      }
+    };
+    
+    // Map color scheme names to d3 interpolators
+    const colorSchemes = {
+      viridis: d3.interpolateViridis,
+      inferno: d3.interpolateInferno,
+      magma: d3.interpolateMagma,
+      plasma: d3.interpolatePlasma,
+      warm: d3.interpolateWarm,
+      cool: d3.interpolateCool,
+      rainbow: d3.interpolateRainbow
+    };
+    
+    // Initialize the visualization
+    async function initVisualization() {
+      try {
+        // Now that we have the data, update the visualization
+        updateVisualization();
+        
+        // Initialize the UI based on the current mode
+        switchTab(currentMode);
+      } catch (error) {
+        console.error('Error loading test data:', error);
+        dataInfo.innerHTML = `Error loading test data: ${error.message}`;
+      }
+    }
+    
+    // Prepare 2D grid data from the contourData object
+    function prepare2DGridData() {
+      const gridWidth = contourData.data.x.length;
+      const gridHeight = contourData.data.y.length;
+      const grid = [];
+      
+      // Create 2D grid
+      for (let y = 0; y < gridHeight; y++) {
+        const row = [];
+        for (let x = 0; x < gridWidth; x++) {
+          row.push(contourData.data.v[y][x]);
+        }
+        grid.push(row);
+      }
+      
+      return grid;
+    }
+    
+    // Generate thresholds based on the data range
+    function generateThresholds(count) {
+      const min = contourData.data.zmin;
+      const max = contourData.data.zmax;
+      return Array.from({ length: count }, (_, i) => min + (max - min) * i / (count - 1));
+    }
+
+    // Transform coordinates from grid to SVG space
+    function transformCoordinates(point, gridWidth, gridHeight, xScale, yScale) {
+      const gridX = point[0] / gridWidth;
+      const gridY = point[1] / gridHeight;
+      
+      const dataX = contourData.data.x[0] + gridX * (contourData.data.x[gridWidth - 1] - contourData.data.x[0]);
+      const dataY = contourData.data.y[0] + gridY * (contourData.data.y[gridHeight - 1] - contourData.data.y[0]);
+      
+      return [xScale(dataX), yScale(dataY)];
+    }
+    
+    // Transform contour coordinates
+    function transformContourCoordinates(coordinates, gridWidth, gridHeight, xScale, yScale) {
+      return coordinates.map(contour => {
+        return contour.map(point => transformCoordinates(point, gridWidth, gridHeight, xScale, yScale));
+      });
+    }
+    
+    // Transform band coordinates
+    function transformBandCoordinates(coordinates, gridWidth, gridHeight, xScale, yScale) {
+      return coordinates.map(polygon => {
+        return polygon.map(ring => {
+          return ring.map(point => transformCoordinates(point, gridWidth, gridHeight, xScale, yScale));
+        });
+      });
+    }
+    
+    // Render contour lines to an SVG
+    function renderContourLines(svg, contourResults, colorScale, gridWidth, gridHeight, xScale, yScale) {
+      contourResults.forEach(result => {
+        const transformedCoordinates = transformContourCoordinates(
+          result.coordinates, 
+          gridWidth, 
+          gridHeight, 
+          xScale, 
+          yScale
+        );
+        
+        // Create line generator
+        const lineGenerator = d3.line()
+          .x(d => d[0])
+          .y(d => d[1])
+          .curve(d3.curveBasis); // Use basis interpolation for smoother lines
+        
+        svg.append('g')
+          .selectAll('path')
+          .data(transformedCoordinates)
+          .enter()
+          .append('path')
+          .attr('d', lineGenerator)
+          .attr('stroke', colorScale(result.threshold))
+          .attr('stroke-width', 1.5)
+          .attr('fill', 'none')
+          .attr('class', 'contour');
+      });
+    }
+    
+    // Render contour bands to an SVG
+    function renderContourBands(svg, bandResults, colorScale, gridWidth, gridHeight, xScale, yScale) {
+      // Create path generator for bands
+      const pathGenerator = d3.geoPath();
+      
+      bandResults.forEach((result, i) => {
+        const middleValue = (result.lowerValue + result.upperValue) / 2;
+        const transformedCoordinates = transformBandCoordinates(
+          result.coordinates, 
+          gridWidth, 
+          gridHeight, 
+          xScale, 
+          yScale
+        );
+        
+        // Create GeoJSON compatible objects for the bands
+        const geoJSONPolygons = transformedCoordinates.map(polygon => {
+          return {
+            type: "Polygon",
+            coordinates: polygon
+          };
+        });
+        
+        // Render each band
+        svg.append('g')
+          .selectAll('path')
+          .data(geoJSONPolygons)
+          .enter()
+          .append('path')
+          .attr('d', pathGenerator)
+          .attr('fill', colorScale(middleValue))
+          .attr('stroke', '#000')
+          .attr('stroke-width', 0.5)
+          .attr('stroke-opacity', 0.3)
+          .attr('class', 'contour-band');
+      });
+    }
+    
+    // Setup axes for an SVG
+    function setupAxes(svg, xScale, yScale) {
+      // Create axes
+      const xAxis = d3.axisBottom(xScale);
+      const yAxis = d3.axisLeft(yScale);
+      
+      // Add X axis
+      svg.append('g')
+        .attr('class', 'axis')
+        .attr('transform', `translate(0, ${svg.node().clientHeight - 50})`)
+        .call(xAxis);
+      
+      // Add Y axis
+      svg.append('g')
+        .attr('class', 'axis')
+        .attr('transform', 'translate(50, 0)')
+        .call(yAxis);
+    }
+    
+    // Update the visualization based on current settings
+    function updateVisualization() {
+      // Check if data is loaded
+      if (!contourData) {
+        dataInfo.innerHTML = "Data not loaded yet...";
+        return;
+      }
+      
+      // Get the current settings
+      const thresholdCount = parseInt(thresholdCountInput.value);
+      const bandCount = parseInt(bandCountInput.value);
+      const colorScheme = colorSchemeSelect.value;
+      
+      // Prepare the data as 2D grid
+      const gridData = prepare2DGridData();
+      
+      // Get grid dimensions
+      const gridWidth = contourData.data.x.length;
+      const gridHeight = contourData.data.y.length;
+      
+      // Clear the SVGs
+      contoursSvg.selectAll('*').remove();
+      bandsSvg.selectAll('*').remove();
+      combinedSvg.selectAll('*').remove();
+      
+      // Set up scales for X and Y axes
+      const xScale = d3.scaleLinear()
+        .domain([d3.min(contourData.data.x), d3.max(contourData.data.x)])
+        .range([50, contoursSvg.node().clientWidth - 50]);
+      
+      const yScale = d3.scaleLinear()
+        .domain([d3.min(contourData.data.y), d3.max(contourData.data.y)])
+        .range([contoursSvg.node().clientHeight - 50, 50]);
+      
+      // Create color scales
+      const colorScale = d3.scaleSequential(colorSchemes[colorScheme])
+        .domain([contourData.data.zmin, contourData.data.zmax]);
+      
+      // Setup axes for all SVGs
+      setupAxes(contoursSvg, xScale, yScale);
+      setupAxes(bandsSvg, xScale, yScale);
+      setupAxes(combinedSvg, xScale, yScale);
+      
+      // Generate appropriate thresholds
+      const thresholds = generateThresholds(thresholdCount);
+      const bandThresholds = generateThresholds(bandCount + 1);
+      
+      if (currentMode === 'contours' || currentMode === 'combined') {
+        // Generate contour lines
+        const contourResults = [];
+        
+        // Generate contours for each threshold
+        thresholds.forEach(threshold => {
+          const result = generateContours(gridData, threshold);
+          contourResults.push(result);
+        });
+        
+        // Render contour lines
+        if (currentMode === 'contours') {
+          renderContourLines(contoursSvg, contourResults, colorScale, gridWidth, gridHeight, xScale, yScale);
+        } else if (currentMode === 'combined' && showContoursCheckbox.checked) {
+          renderContourLines(combinedSvg, contourResults, colorScale, gridWidth, gridHeight, xScale, yScale);
+        }
+      }
+      
+      if (currentMode === 'bands' || currentMode === 'combined') {
+        // Generate contour bands
+        const bandResults = [];
+        
+        for (let i = 0; i < bandThresholds.length - 1; i++) {
+          const lowerThreshold = bandThresholds[i];
+          const upperThreshold = bandThresholds[i + 1];
+          
+          const bandResult = generateContourBands(gridData, lowerThreshold, upperThreshold);
+          bandResults.push(bandResult);
+        }
+        
+        // Render contour bands
+        if (currentMode === 'bands') {
+          renderContourBands(bandsSvg, bandResults, colorScale, gridWidth, gridHeight, xScale, yScale);
+        } else if (currentMode === 'combined' && showBandsCheckbox.checked) {
+          renderContourBands(combinedSvg, bandResults, colorScale, gridWidth, gridHeight, xScale, yScale);
+        }
+      }
+      
+      // Update data info
+      let modeText = '';
+      if (currentMode === 'contours') {
+        modeText = `Contour Lines (Thresholds: ${thresholdCount})`;
+      } else if (currentMode === 'bands') {
+        modeText = `Contour Bands (Bands: ${bandCount})`;
+      } else {
+        modeText = `Combined View (Thresholds: ${thresholdCount}, Bands: ${bandCount})`;
+      }
+      
+      dataInfo.innerHTML = `
+        Data Range: [${contourData.data.zmin.toFixed(2)}, ${contourData.data.zmax.toFixed(2)}]<br>
+        Grid Size: ${gridWidth}×${gridHeight}<br>
+        Current Mode: ${modeText}
+      `;
+    }
+    
+    // Initialize the UI based on the current mode
+    document.querySelector('.band-control').style.display = currentMode === 'contours' ? 'none' : 'block';
+    document.querySelector('.combined-control').style.display = currentMode === 'combined' ? 'block' : 'none';
+    
+    // Initialize the visualization when the page loads
+    window.onload = initVisualization;
+  </script>
+</body>
+</html> 

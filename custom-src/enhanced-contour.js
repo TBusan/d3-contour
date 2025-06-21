@@ -200,21 +200,34 @@ function generateIsolines(cell, threshold) {
 }
 
 /**
- * 为鞍点生成替代的等值线连接
+ * 生成鞍点情况的替代连接方式
  * @param {Object} cell 细胞数据
  * @param {Number} threshold 阈值
- * @returns {Array<Array<Array<Number>>>} 替代等值线线段
+ * @returns {Array<Array<Array<Number>>>} 等值线线段数组
  */
 function generateAlternativeSaddleIsolines(cell, threshold) {
   const corners = cell.corners;
   const caseCode = cell.caseCode;
   
-  // 获取替代连接方式 (15 - 当前情况码)
-  const altCaseLines = CONTOUR_CASES[15 - caseCode];
-  if (!altCaseLines || altCaseLines.length === 0) return [];
+  // 根据鞍点情况选择替代连接方式
+  let alternativeCase;
   
-  // 转换模板线段为实际坐标
-  return altCaseLines.map(line => {
+  if (caseCode === 5) {
+    // 替代情况: 连接左上-右下
+    alternativeCase = [
+      [[0.5, 1.0], [1.5, 1.0]]
+    ];
+  } else if (caseCode === 10) {
+    // 替代情况: 连接左下-右上
+    alternativeCase = [
+      [[1.0, 0.5], [1.0, 1.5]]
+    ];
+  } else {
+    return [];
+  }
+  
+  // 转换替代连接方式为实际坐标
+  return alternativeCase.map(line => {
     return line.map(templatePoint => {
       const x = templatePoint[0];
       const y = templatePoint[1];
@@ -235,7 +248,7 @@ function generateAlternativeSaddleIsolines(cell, threshold) {
         p1 = corners[3];
         p2 = corners[0];
       } else {
-        // 中心点与边的连接，使用单元格中心
+        // 不应该到这里，返回单元格中心点
         const center = [
           (corners[0].position[0] + corners[2].position[0]) / 2,
           (corners[0].position[1] + corners[2].position[1]) / 2
@@ -249,77 +262,93 @@ function generateAlternativeSaddleIsolines(cell, threshold) {
 }
 
 /**
- * 合并线段片段为闭合轮廓
- * @param {Array<Array<Array<Number>>>} segments 线段片段
- * @returns {Array<Array<Array<Number>>>} 闭合轮廓
+ * 将线段拼接为闭合轮廓
+ * @param {Array<Array<Array<Array<Number>>>>} lineSegments 线段数组
+ * @returns {Array<Array<Array<Number>>>} 闭合轮廓数组
  */
-function stitchContours(segments) {
-  if (!segments || segments.length === 0) return [];
+function stitchContours(lineSegments) {
+  // 扁平化所有线段
+  const segments = lineSegments.flat();
+  if (segments.length === 0) return [];
   
-  // 展平所有线段
-  let lineSegments = [];
-  segments.forEach(cellSegments => {
-    if (cellSegments) {
-      cellSegments.forEach(segment => {
-        if (segment && segment.length === 2) {
-          lineSegments.push(segment);
-        }
-      });
-    }
-  });
-  
-  // 如果没有线段，直接返回
-  if (lineSegments.length === 0) return [];
-  
-  // 构建轮廓线
+  // 存储已连接的轮廓和待处理的线段
   const contours = [];
-  let currentContour = [lineSegments[0][0], lineSegments[0][1]];
-  lineSegments.splice(0, 1);
+  const remainingSegments = [...segments];
   
-  // 尝试闭合轮廓
-  while (lineSegments.length > 0) {
-    let foundMatch = false;
-    let lastPoint = currentContour[currentContour.length - 1];
+  // 当还有线段未处理时继续循环
+  while (remainingSegments.length > 0) {
+    // 取出一个线段作为起始线段
+    const startSegment = remainingSegments.pop();
+    const contour = [...startSegment];
     
-    // 查找能连接的下一个线段
-    for (let i = 0; i < lineSegments.length; i++) {
-      const segment = lineSegments[i];
+    // 连接线段直到形成闭合轮廓或无法继续连接
+    let connected = true;
+    while (connected) {
+      connected = false;
       
-      // 检查第一个点是否匹配
-      if (pointsAreClose(lastPoint, segment[0])) {
-        currentContour.push(segment[1]);
-        lineSegments.splice(i, 1);
-        foundMatch = true;
+      // 获取当前轮廓的首尾点
+      const firstPoint = contour[0];
+      const lastPoint = contour[contour.length - 1];
+      
+      // 检查是否可以闭合轮廓
+      if (pointsAreClose(firstPoint, lastPoint)) {
+        // 轮廓已闭合，无需继续连接
         break;
       }
       
-      // 检查第二个点是否匹配
-      if (pointsAreClose(lastPoint, segment[1])) {
-        currentContour.push(segment[0]);
-        lineSegments.splice(i, 1);
-        foundMatch = true;
-        break;
+      // 尝试连接其他线段
+      for (let i = 0; i < remainingSegments.length; i++) {
+        const segment = remainingSegments[i];
+        const segmentFirst = segment[0];
+        const segmentLast = segment[segment.length - 1];
+        
+        // 检查是否可以连接到轮廓末尾
+        if (pointsAreClose(lastPoint, segmentFirst)) {
+          // 将线段除首点外的点添加到轮廓末尾
+          for (let j = 1; j < segment.length; j++) {
+            contour.push(segment[j]);
+          }
+          remainingSegments.splice(i, 1);
+          connected = true;
+          break;
+        } 
+        // 检查是否可以连接到轮廓开头
+        else if (pointsAreClose(firstPoint, segmentLast)) {
+          // 将线段除末点外的点添加到轮廓开头
+          for (let j = segment.length - 2; j >= 0; j--) {
+            contour.unshift(segment[j]);
+          }
+          remainingSegments.splice(i, 1);
+          connected = true;
+          break;
+        }
+        // 检查是否需要反转线段再连接
+        else if (pointsAreClose(lastPoint, segmentLast)) {
+          // 将反转的线段除首点外的点添加到轮廓末尾
+          for (let j = segment.length - 2; j >= 0; j--) {
+            contour.push(segment[j]);
+          }
+          remainingSegments.splice(i, 1);
+          connected = true;
+          break;
+        }
+        else if (pointsAreClose(firstPoint, segmentFirst)) {
+          // 将反转的线段除末点外的点添加到轮廓开头
+          for (let j = 1; j < segment.length; j++) {
+            contour.unshift(segment[j]);
+          }
+          remainingSegments.splice(i, 1);
+          connected = true;
+          break;
+        }
       }
     }
     
-    // 如果无法继续连接，或者轮廓已闭合
-    if (!foundMatch || pointsAreClose(currentContour[0], lastPoint)) {
-      // 检查是否闭合（首尾相连）
-      if (pointsAreClose(currentContour[0], lastPoint)) {
-        // 确保首尾点完全一致
-        currentContour[currentContour.length - 1] = [...currentContour[0]];
-      }
-      
-      // 应用光滑处理
-      const smoothedContour = smoothContour(currentContour);
-      contours.push(smoothedContour);
-      
-      // 开始新的轮廓（如果还有剩余线段）
-      if (lineSegments.length > 0) {
-        currentContour = [lineSegments[0][0], lineSegments[0][1]];
-        lineSegments.splice(0, 1);
-      }
-    }
+    // 应用平滑算法
+    const smoothedContour = smoothContour(contour);
+    
+    // 添加到轮廓列表
+    contours.push(smoothedContour);
   }
   
   return contours;
@@ -475,54 +504,106 @@ export function generateContourBands(data, lowerThreshold, upperThreshold) {
   // 获取上阈值的等值线
   const upperContour = generateContours(data, upperThreshold);
   
-  // 构建多边形
+  // 创建等值面
   const polygons = [];
   
   // 处理下阈值轮廓作为外环
-  lowerContour.coordinates.forEach(lowerRing => {
+  for (const lowerRing of lowerContour.coordinates) {
     // 确保环是闭合的
-    if (!pointsAreClose(lowerRing[0], lowerRing[lowerRing.length - 1])) {
+    if (lowerRing.length > 0 && !pointsAreClose(lowerRing[0], lowerRing[lowerRing.length - 1])) {
       lowerRing.push([...lowerRing[0]]);
     }
     
-    // 计算面积以确保方向正确
+    // 计算面积以确保方向正确（外环应为顺时针）
     const area = calculateArea(lowerRing);
     
-    // 如果面积为负，反转环的方向
-    if (area < 0) {
-      lowerRing.reverse();
-    }
+    // 创建多边形，初始只有外环
+    const polygon = [lowerRing];
     
     // 查找此外环内的所有上阈值轮廓作为内环
-    const holes = [];
-    
-    upperContour.coordinates.forEach(upperRing => {
+    for (const upperRing of upperContour.coordinates) {
       // 确保环是闭合的
-      if (!pointsAreClose(upperRing[0], upperRing[upperRing.length - 1])) {
-        upperRing.push([...upperRing[0]]);
+      const closedUpperRing = [...upperRing];
+      if (closedUpperRing.length > 0 && !pointsAreClose(closedUpperRing[0], closedUpperRing[closedUpperRing.length - 1])) {
+        closedUpperRing.push([...closedUpperRing[0]]);
       }
       
       // 检查上轮廓是否在下轮廓内部
-      const testPoint = upperRing[0];
-      if (pointInPolygon(testPoint, lowerRing)) {
-        // 确保方向与外环相反
-        const upperArea = calculateArea(upperRing);
-        if (upperArea > 0) {
-          upperRing.reverse();
+      if (closedUpperRing.length > 0) {
+        const testPoint = closedUpperRing[0];
+        if (pointInPolygon(testPoint, lowerRing)) {
+          // 确保内环方向与外环相反
+          const upperArea = calculateArea(closedUpperRing);
+          if ((area < 0 && upperArea < 0) || (area > 0 && upperArea > 0)) {
+            // 如果方向相同，反转内环
+            closedUpperRing.reverse();
+          }
+          
+          polygon.push(closedUpperRing);
         }
-        
-        holes.push(upperRing);
       }
-    });
+    }
     
-    // 构建多边形（带洞）
-    polygons.push([lowerRing, ...holes]);
-  });
+    polygons.push(polygon);
+  }
+  
+  // 处理边界情况：创建包含整个数据范围的等值面
+  if (polygons.length === 0) {
+    // 创建数据边界轮廓
+    const width = data[0].length;
+    const height = data.length;
+    const boundaryRing = [
+      [0, 0],
+      [width - 1, 0],
+      [width - 1, height - 1],
+      [0, height - 1],
+      [0, 0]
+    ];
+    
+    // 创建多边形，使用边界作为外环
+    const boundaryPolygon = [boundaryRing];
+    
+    // 将所有上阈值轮廓作为内环
+    for (const upperRing of upperContour.coordinates) {
+      // 确保环是闭合的
+      const closedUpperRing = [...upperRing];
+      if (closedUpperRing.length > 0 && !pointsAreClose(closedUpperRing[0], closedUpperRing[closedUpperRing.length - 1])) {
+        closedUpperRing.push([...closedUpperRing[0]]);
+      }
+      
+      // 确保内环为逆时针方向
+      const upperArea = calculateArea(closedUpperRing);
+      if (upperArea > 0) {
+        closedUpperRing.reverse();
+      }
+      
+      boundaryPolygon.push(closedUpperRing);
+    }
+    
+    polygons.push(boundaryPolygon);
+  }
   
   return {
     type: "MultiPolygon",
     lowerValue: lowerThreshold,
     upperValue: upperThreshold,
     coordinates: polygons
+  };
+}
+
+/**
+ * 同时生成等值线和等值面
+ * @param {Array<Array<Number>>} data 二维数据数组
+ * @param {Number} lowerThreshold 下阈值
+ * @param {Number} upperThreshold 上阈值
+ * @returns {Object} 包含等值线和等值面的对象
+ */
+export function generateContourAndBands(data, lowerThreshold, upperThreshold) {
+  const contours = generateContours(data, lowerThreshold);
+  const bands = generateContourBands(data, lowerThreshold, upperThreshold);
+  
+  return {
+    contours,
+    bands
   };
 } 

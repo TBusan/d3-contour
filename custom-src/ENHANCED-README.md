@@ -1,121 +1,106 @@
-# 增强版等值线与等值面生成器
+# Enhanced Contour 增强版等值线生成器
 
-这个库提供了一个基于Marching Squares算法的等值线和等值面生成器实现，参考了[openhome.cc](https://openhome.cc/Gossip/P5JS/MarchingSquares.html)系列文章的思路，增加了多项改进功能。
+基于 Marching Squares 算法实现的增强版等值线和等值面生成器。参考了 openhome.cc 的 Marching Squares 系列文章，并在 d3-contour 基础上进行了改进。
 
 ## 特点
 
-1. **平滑的等值线**：使用了插值和Chaikin平滑算法生成更平滑的轮廓线，没有生硬的折点
-2. **支持null值**：能够处理包含null、undefined或NaN的数据
-3. **鞍点二义性解决**：解决了鞍点情况下连接方式的二义性问题
-4. **边界处理**：改进的边界处理，确保完整的轮廓生成
-5. **多边形拓扑**：正确处理等值面的内外环关系
-6. **GeoJSON格式输出**：输出符合GeoJSON格式的数据，便于与可视化库集成
+1. **完善的 null 值处理**：可以处理数据中的 null 或 NaN 值，避免生成错误的等值线
+2. **平滑等值线**：使用平滑曲线插值和 Chaikin 算法生成更流畅的等值线
+3. **鞍点二义性处理**：通过计算单元格中心值解决鞍点情况（case 5 和 case 10）的二义性问题
+4. **改进的边界处理**：确保等值线在边界处正确闭合
+5. **完善的拓扑关系**：正确处理等值面的内外环关系
 
-## 使用方法
+## 最近更新
 
-### 等值线生成
+- **等值面渲染修复**：修复了等值面的渲染范围和闭合构造问题
+  - 添加了数据边界轮廓作为最外层轮廓
+  - 改进了内外环关系的处理逻辑
+  - 确保环的正确闭合和方向
+  - 处理边界外的区域，确保完整覆盖
+
+## 主要API
+
+### generateContours(data, threshold)
+
+生成指定阈值的等值线。
+
+参数：
+- `data`: 二维数组，表示数据网格
+- `threshold`: 数值，表示等值线的阈值
+
+返回：
+- GeoJSON格式的等值线对象，类型为 "MultiLineString"
+
+### generateContourBands(data, lowerThreshold, upperThreshold)
+
+生成指定阈值范围的等值面。
+
+参数：
+- `data`: 二维数组，表示数据网格
+- `lowerThreshold`: 数值，表示等值面的下阈值
+- `upperThreshold`: 数值，表示等值面的上阈值
+
+返回：
+- GeoJSON格式的等值面对象，类型为 "MultiPolygon"
+
+## 使用示例
 
 ```javascript
-import { generateContours } from './enhanced-contour.js';
+import { generateContours, generateContourBands } from './enhanced-contour.js';
 
-// 示例数据 - 二维数组，可以包含null值
+// 示例数据
 const data = [
   [0.0, 0.2, 0.4, 0.6, 0.8],
-  [0.2, 0.4, null, 0.8, 1.0],
-  [0.4, 0.6, 0.8, 1.0, 1.2],
+  [0.2, 0.4, 0.6, 0.8, 1.0],
+  [0.4, 0.6, null, 1.0, 1.2],
   [0.6, 0.8, 1.0, 1.2, 1.4],
   [0.8, 1.0, 1.2, 1.4, 1.6]
 ];
 
-// 生成阈值为0.5的等值线
+// 生成等值线
 const contours = generateContours(data, 0.5);
+console.log(`生成了${contours.coordinates.length}条等值线`);
 
-console.log(contours);
-// 输出格式: 
-// {
-//   type: "MultiLineString",
-//   threshold: 0.5,
-//   coordinates: [...] // 等值线坐标数组
-// }
-```
-
-### 等值面生成
-
-```javascript
-import { generateContourBands } from './enhanced-contour.js';
-
-// 使用相同的示例数据
-const data = [ /* ... */ ];
-
-// 生成阈值区间为[0.5, 1.0]的等值面
+// 生成等值面
 const bands = generateContourBands(data, 0.5, 1.0);
-
-console.log(bands);
-// 输出格式:
-// {
-//   type: "MultiPolygon",
-//   lowerValue: 0.5,
-//   upperValue: 1.0,
-//   coordinates: [...] // 等值面坐标数组，包含外环和内环(洞)
-// }
+console.log(`生成了${bands.coordinates.length}个等值面`);
 ```
 
-## 算法原理
+## 与D3-Contour的区别
 
-### Marching Squares
-这个实现基于Marching Squares算法，该算法将2D数据网格分成小单元格，并基于四个角点的值确定等值线如何穿过单元格。它将处理16种可能的情况：
+1. **null值处理**：d3-contour不能很好地处理null值，而enhanced-contour可以
+2. **平滑曲线**：enhanced-contour生成的等值线更加平滑
+3. **鞍点处理**：enhanced-contour通过计算中心值解决鞍点二义性
+4. **边界处理**：enhanced-contour改进了边界处理，确保轮廓正确闭合
+5. **等值面处理**：enhanced-contour正确处理等值面的内外环关系和边界区域
 
-```
-0: □□    1: ■□    2: □■    3: ■■    4: □□    5: ■□    6: □■    7: ■■
-  □□      □□      □□      □□      ■□      ■□      ■□      ■□
+## 实现细节
 
-8: □□    9: ■□    10: □■   11: ■■   12: □□   13: ■□   14: □■   15: ■■
-  □■      □■      □■      □■      ■■      ■■      ■■      ■■
-```
+### Marching Squares算法
 
-其中黑色(■)表示高于阈值，白色(□)表示低于阈值的点。
+Marching Squares是一种生成等值线的经典算法。它将数据网格分成一个个小方格（单元格），并根据单元格四个角点的值与阈值的关系，确定等值线如何穿过该单元格。
 
 ### 鞍点处理
 
-当遇到情况5和10(鞍点)时，连接方式有两种可能，我们通过计算单元格中心点的值来决定使用哪种连接方式：
-
-```
-情况5:        或        情况10:       或
-■□           ■---□      □■           □---■
-|     VS      |          |     VS      |
-□---■         ■□         ■---□         □■
-```
+当单元格的对角两个角点高于阈值，另外两个角点低于阈值时，会出现鞍点。这种情况下，等值线的连接方式存在二义性。enhanced-contour通过计算单元格中心点的值来解决这个问题。
 
 ### 平滑算法
 
-我们使用两种方法来生成更平滑的等值线：
+enhanced-contour使用两种方法使等值线更平滑：
+1. 在插值计算等值线交点时使用平滑曲线插值
+2. 对生成的等值线应用Chaikin平滑算法
 
-1. **插值优化**：使用平滑插值函数而非简单的线性插值，在计算等值线穿过单元格边缘的位置时产生更自然的曲线
-2. **Chaikin平滑**：对生成的轮廓应用Chaikin平滑算法，在每条线段上递归插入更多点，使轮廓更加圆滑
+### 等值面生成
 
-## 演示
+等值面是由两个阈值之间的区域形成的。enhanced-contour通过以下步骤生成等值面：
+1. 生成下阈值的等值线作为外环
+2. 生成上阈值的等值线作为内环（洞）
+3. 确定内外环的包含关系
+4. 处理边界区域，确保完整覆盖数据范围
 
-参见`enhanced-example.js`文件，其中包含了使用各种数据集生成等值线和等值面的完整示例：
+## 更多示例
 
-```javascript
-// 运行所有演示
-import { runAllDemos } from './enhanced-example.js';
-runAllDemos();
-
-// 或者单独运行特定演示
-import { demoContours, demoContourBands } from './enhanced-example.js';
-demoContours();
-demoContourBands();
-```
-
-## 与原版d3-contour的区别
-
-相比d3-contour，这个实现：
-
-1. 代码结构更清晰，更接近文章中的实现思路
-2. 生成的等值线更平滑，具有更好的视觉效果
-3. 简化了API，使其更易于使用
-4. 更好地处理边缘情况和特殊输入
+详见 `enhanced-example.js` 文件，其中包含了等值线、等值面以及多级等值面的生成和绘制示例。
 
 ## 参考资料
 

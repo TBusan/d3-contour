@@ -1,152 +1,179 @@
 /**
- * 增强版等值线与等值面生成器示例
+ * Enhanced Contour 示例代码
+ * 展示如何使用增强版等值线和等值面生成器
  */
-
 import { generateContours, generateContourBands } from './enhanced-contour.js';
 
-// 示例数据：包含一些null值的二维数组
-const exampleData = [
-  [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-  [0.2, 0.4, 0.6, 0.8, 1.0, 1.2],
-  [0.4, 0.6, null, 1.0, 1.2, 1.4],
-  [0.6, 0.8, 1.0, 1.2, 1.4, 1.6],
-  [0.8, 1.0, 1.2, null, 1.6, 1.8],
-  [1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
-];
-
 /**
- * 生成一个高斯分布的测试数据集，包含一些随机的null值
+ * 生成测试数据
  * @param {Number} width 数据宽度
  * @param {Number} height 数据高度
- * @param {Number} nullProbability null值的概率
  * @returns {Array<Array<Number>>} 二维数据数组
  */
-function generateTestData(width, height, nullProbability = 0.1) {
-  const result = [];
-  
+function generateTestData(width = 100, height = 100) {
+  const data = [];
   for (let y = 0; y < height; y++) {
     const row = [];
     for (let x = 0; x < width; x++) {
-      if (Math.random() < nullProbability) {
-        row.push(null);
-        continue;
-      }
+      // 生成几个高斯分布的山峰
+      const value = 
+        100 * Math.exp(-((x - 30) ** 2 + (y - 30) ** 2) / 400) +
+        50 * Math.exp(-((x - 70) ** 2 + (y - 70) ** 2) / 300) +
+        80 * Math.exp(-((x - 50) ** 2 + (y - 50) ** 2) / 600);
       
-      // 生成高斯分布值
-      const cx = width / 2;
-      const cy = height / 2;
-      const sigma = Math.min(width, height) / 3;
-      
-      // 计算到中心的距离
-      const dx = x - cx;
-      const dy = y - cy;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      // 生成高斯分布值
-      const value = Math.exp(-(distance * distance) / (2 * sigma * sigma));
-      
-      row.push(value);
+      // 随机添加一些null值，测试null值处理
+      row.push(Math.random() < 0.05 ? null : value);
     }
-    result.push(row);
+    data.push(row);
+  }
+  return data;
+}
+
+/**
+ * 等值线示例
+ * @returns {Object} 等值线结果
+ */
+function contourExample() {
+  // 生成测试数据
+  const data = generateTestData();
+  
+  // 设置等值线阈值
+  const threshold = 50;
+  
+  // 生成等值线
+  const contours = generateContours(data, threshold);
+  
+  console.log(`生成了${contours.coordinates.length}条等值线，阈值为${threshold}`);
+  
+  return contours;
+}
+
+/**
+ * 等值面示例
+ * @returns {Object} 等值面结果
+ */
+function contourBandExample() {
+  // 生成测试数据
+  const data = generateTestData();
+  
+  // 设置等值面的上下阈值
+  const lowerThreshold = 30;
+  const upperThreshold = 70;
+  
+  // 生成等值面
+  const bands = generateContourBands(data, lowerThreshold, upperThreshold);
+  
+  console.log(`生成了${bands.coordinates.length}个等值面，阈值范围为[${lowerThreshold}, ${upperThreshold}]`);
+  
+  return bands;
+}
+
+/**
+ * 多级等值面示例
+ * @returns {Array<Object>} 多个等值面结果
+ */
+function multiLevelContourBandsExample() {
+  // 生成测试数据
+  const data = generateTestData();
+  
+  // 设置多级阈值
+  const thresholds = [0, 20, 40, 60, 80, 100];
+  
+  // 生成多级等值面
+  const bands = [];
+  for (let i = 0; i < thresholds.length - 1; i++) {
+    const lowerThreshold = thresholds[i];
+    const upperThreshold = thresholds[i + 1];
+    
+    const band = generateContourBands(data, lowerThreshold, upperThreshold);
+    bands.push(band);
+    
+    console.log(`生成了${band.coordinates.length}个等值面，阈值范围为[${lowerThreshold}, ${upperThreshold}]`);
   }
   
-  return result;
+  return bands;
 }
 
 /**
- * 演示等值线生成
+ * 在Canvas上绘制等值线
+ * @param {CanvasRenderingContext2D} ctx Canvas上下文
+ * @param {Object} contours 等值线数据
+ * @param {Number} scale 缩放比例
+ * @param {String} color 线条颜色
  */
-function demoContours() {
-  console.log("=== 等值线生成示例 ===");
+function drawContours(ctx, contours, scale = 1, color = 'blue') {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
   
-  // 使用小示例数据
-  console.log("使用示例数据：");
-  const contour1 = generateContours(exampleData, 1.0);
-  console.log(`阈值 1.0 生成了 ${contour1.coordinates.length} 条等值线`);
-  
-  // 使用生成的数据
-  console.log("\n使用生成数据：");
-  const largeData = generateTestData(20, 20, 0.05);
-  
-  // 生成多个等值线
-  const thresholds = [0.2, 0.4, 0.6, 0.8];
-  
-  thresholds.forEach(threshold => {
-    const contour = generateContours(largeData, threshold);
-    console.log(`阈值 ${threshold} 生成了 ${contour.coordinates.length} 条等值线`);
+  contours.coordinates.forEach(contour => {
+    ctx.beginPath();
     
-    // 输出第一条等值线的点数
-    if (contour.coordinates.length > 0) {
-      console.log(`  - 第一条等值线有 ${contour.coordinates[0].length} 个点`);
-    }
+    contour.forEach((point, i) => {
+      const [x, y] = point;
+      if (i === 0) {
+        ctx.moveTo(x * scale, y * scale);
+      } else {
+        ctx.lineTo(x * scale, y * scale);
+      }
+    });
+    
+    ctx.stroke();
   });
 }
 
 /**
- * 演示等值面生成
+ * 在Canvas上绘制等值面
+ * @param {CanvasRenderingContext2D} ctx Canvas上下文
+ * @param {Object} bands 等值面数据
+ * @param {Number} scale 缩放比例
+ * @param {String} fillColor 填充颜色
+ * @param {String} strokeColor 边框颜色
  */
-function demoContourBands() {
-  console.log("\n=== 等值面生成示例 ===");
+function drawContourBands(ctx, bands, scale = 1, fillColor = 'rgba(0, 0, 255, 0.2)', strokeColor = 'rgba(0, 0, 255, 0.5)') {
+  ctx.fillStyle = fillColor;
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = 1;
   
-  // 使用小示例数据
-  console.log("使用示例数据：");
-  const band1 = generateContourBands(exampleData, 0.8, 1.2);
-  console.log(`阈值区间 [0.8, 1.2] 生成了 ${band1.coordinates.length} 个等值面`);
-  
-  // 使用生成的数据
-  console.log("\n使用生成数据：");
-  const largeData = generateTestData(20, 20, 0.05);
-  
-  // 生成多个等值面
-  const thresholdPairs = [
-    [0.1, 0.3],
-    [0.3, 0.5],
-    [0.5, 0.7],
-    [0.7, 0.9]
-  ];
-  
-  thresholdPairs.forEach(([lower, upper]) => {
-    const band = generateContourBands(largeData, lower, upper);
-    console.log(`阈值区间 [${lower}, ${upper}] 生成了 ${band.coordinates.length} 个等值面`);
+  bands.coordinates.forEach(polygon => {
+    ctx.beginPath();
     
-    // 输出第一个等值面的信息
-    if (band.coordinates.length > 0) {
-      const polygon = band.coordinates[0];
-      console.log(`  - 第一个等值面有 ${polygon.length} 个环（外环+内环）`);
+    // 绘制外环
+    const outerRing = polygon[0];
+    outerRing.forEach((point, i) => {
+      const [x, y] = point;
+      if (i === 0) {
+        ctx.moveTo(x * scale, y * scale);
+      } else {
+        ctx.lineTo(x * scale, y * scale);
+      }
+    });
+    
+    // 绘制内环（洞）
+    for (let i = 1; i < polygon.length; i++) {
+      const hole = polygon[i];
       
-      // 展示外环点数
-      console.log(`  - 外环有 ${polygon[0].length} 个点`);
-      
-      // 展示内环数量
-      if (polygon.length > 1) {
-        console.log(`  - 有 ${polygon.length - 1} 个内环（洞）`);
+      // 移动到洞的起点
+      if (hole.length > 0) {
+        ctx.moveTo(hole[0][0] * scale, hole[0][1] * scale);
+        
+        // 绘制洞的轮廓
+        for (let j = 1; j < hole.length; j++) {
+          ctx.lineTo(hole[j][0] * scale, hole[j][1] * scale);
+        }
       }
     }
+    
+    ctx.fill();
+    ctx.stroke();
   });
 }
 
-/**
- * 运行所有演示
- */
-function runAllDemos() {
-  demoContours();
-  demoContourBands();
-  
-  return {
-    message: "演示完成，请检查控制台输出"
-  };
-}
-
-// 如果在浏览器环境中，将函数绑定到window对象
-if (typeof window !== 'undefined') {
-  window.runAllDemos = runAllDemos;
-  window.demoContours = demoContours;
-  window.demoContourBands = demoContourBands;
-  window.generateTestData = generateTestData;
-  console.log("演示函数已准备好，请调用 runAllDemos() 运行所有演示");
-} else if (typeof require !== 'undefined') {
-  // Node.js环境下直接运行
-  runAllDemos();
-}
-
-export { runAllDemos, demoContours, demoContourBands, generateTestData }; 
+// 导出示例函数
+export {
+  generateTestData,
+  contourExample,
+  contourBandExample,
+  multiLevelContourBandsExample,
+  drawContours,
+  drawContourBands
+}; 
