@@ -27,7 +27,8 @@ export function generateContourBands(data, thresholds, options = {}) {
     colorScale: null,    // 颜色比例尺
     fillOpacity: 0.7,    // 填充透明度
     showLines: true,     // 是否显示轮廓线
-    clipToDataBounds: true // 是否裁剪到数据边界
+    clipToDataBounds: true, // 是否裁剪到数据边界
+    extendToDataBounds: true // 是否扩展到数据边界
   };
   
   const config = { ...defaultOptions, ...options };
@@ -67,7 +68,8 @@ export function generateContourBands(data, thresholds, options = {}) {
     // 使用Marching Squares算法生成等值线
     const contourLines = marchingSquares(data, threshold, {
       ...config,
-      saddleResolution: true // 解决鞍点问题
+      saddleResolution: true, // 解决鞍点问题
+      extendToDataBounds: config.extendToDataBounds // 确保等值线延伸到数据边界
     });
     
     // 从等值线创建多边形

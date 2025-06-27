@@ -1,0 +1,200 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "dataset": "testData1",
+        "type": "surfaces",
+        "zmin": 0,
+        "zmax": 940.78,
+        "timestamp": "2025-06-26T11:15:08.880Z",
+        "index": 0,
+        "value": 87.20518181818181
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "value": 87.20518181818181,
+        "coordinates": []
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "dataset": "testData1",
+        "type": "surfaces",
+        "zmin": 0,
+        "zmax": 940.78,
+        "timestamp": "2025-06-26T11:15:08.880Z",
+        "index": 1,
+        "value": 172.56266363636362
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "value": 172.56266363636362,
+        "coordinates": [
+          [
+            [
+              [
+                6.36465894832896,
+                13.05
+              ],
+              [
+                7.05,
+                13.060017757386476
+              ],
+              [
+                7.272459950595544,
+                13.05
+              ],
+              [
+                7.05,
+                12.889546877339306
+              ],
+              [
+                6.36465894832896,
+                13.05
+              ]
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "dataset": "testData1",
+        "type": "surfaces",
+        "zmin": 0,
+        "zmax": 940.78,
+        "timestamp": "2025-06-26T11:15:08.880Z",
+        "index": 2,
+        "value": 257.92014545454543
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "value": 257.92014545454543,
+        "coordinates": []
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "dataset": "testData1",
+        "type": "surfaces",
+        "zmin": 0,
+        "zmax": 940.78,
+        "timestamp": "2025-06-26T11:15:08.880Z",
+        "index": 3,
+        "value": 343.2776272727272
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "value": 343.2776272727272,
+        "coordinates": []
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "dataset": "testData1",
+        "type": "surfaces",
+        "zmin": 0,
+        "zmax": 940.78,
+        "timestamp": "2025-06-26T11:15:08.880Z",
+        "index": 4,
+        "value": 428.63510909090905
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "value": 428.63510909090905,
+        "coordinates": []
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "dataset": "testData1",
+        "type": "surfaces",
+        "zmin": 0,
+        "zmax": 940.78,
+        "timestamp": "2025-06-26T11:15:08.880Z",
+        "index": 5,
+        "value": 513.992590909091
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "value": 513.992590909091,
+        "coordinates": []
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "dataset": "testData1",
+        "type": "surfaces",
+        "zmin": 0,
+        "zmax": 940.78,
+        "timestamp": "2025-06-26T11:15:08.880Z",
+        "index": 6,
+        "value": 599.3500727272727
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "value": 599.3500727272727,
+        "coordinates": []
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "dataset": "testData1",
+        "type": "surfaces",
+        "zmin": 0,
+        "zmax": 940.78,
+        "timestamp": "2025-06-26T11:15:08.880Z",
+        "index": 7,
+        "value": 684.7075545454545
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "value": 684.7075545454545,
+        "coordinates": []
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "dataset": "testData1",
+        "type": "surfaces",
+        "zmin": 0,
+        "zmax": 940.78,
+        "timestamp": "2025-06-26T11:15:08.880Z",
+        "index": 8,
+        "value": 770.0650363636364
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "value": 770.0650363636364,
+        "coordinates": []
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "dataset": "testData1",
+        "type": "surfaces",
+        "zmin": 0,
+        "zmax": 940.78,
+        "timestamp": "2025-06-26T11:15:08.880Z",
+        "index": 9,
+        "value": 855.4225181818182
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "value": 855.4225181818182,
+        "coordinates": []
+      }
+    }
+  ]
+}

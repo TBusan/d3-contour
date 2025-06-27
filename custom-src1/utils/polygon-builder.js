@@ -36,17 +36,160 @@ export function createPolygons(contourLines, data, threshold, width, height) {
     return pointsAreClose(firstPoint, lastPoint);
   });
   
-  // 如果没有闭合轮廓，尝试闭合它们
-  if (closedContours.length === 0) {
+  // 处理轮廓
+  let processedContours = [];
+  
+  // 如果有闭合轮廓，直接使用
+  if (closedContours.length > 0) {
+    processedContours = [...closedContours];
+  } else {
+    // 如果没有闭合轮廓，尝试闭合它们
     const boundaryContours = createBoundaryContours(contourLines, data, threshold, width, height);
     return boundaryContours;
   }
   
-  // 构建多边形层次结构（确定哪些轮廓在其他轮廓内）
-  const hierarchy = buildContourHierarchy(closedContours);
+  // 确保所有轮廓都是闭合的
+  const finalContours = processedContours.map(contour => {
+    const closedContour = [...contour];
+    if (!pointsAreClose(closedContour[0], closedContour[closedContour.length - 1])) {
+      closedContour.push(closedContour[0]); // 闭合轮廓
+    }
+    return closedContour;
+  });
   
-  // 将层次结构转换为GeoJSON多边形
-  return convertHierarchyToPolygons(hierarchy);
+  // 分析轮廓关系，确定哪些是外壳，哪些是洞
+  const { shells, holes } = analyzeContours(finalContours, data, threshold);
+  
+  // 创建多边形
+  const polygons = [];
+  
+  // 为每个外壳创建一个多边形
+  for (const shell of shells) {
+    // 找到此外壳内的所有洞
+    const shellHoles = findHolesInShell(shell, holes);
+    const polygon = [shell, ...shellHoles];
+    polygons.push(polygon);
+  }
+  
+  // 检查是否需要添加边界多边形
+  if (shouldAddBoundaryPolygon(shells, contourLines, width, height)) {
+    const boundaryPolygon = createDataBoundaryPolygon(width, height);
+    
+    // 找到所有不在任何外壳内的洞
+    const boundaryHoles = holes.filter(hole => {
+      const insidePoint = getPointInsideRing(hole);
+      return !shells.some(shell => isPointInPolygon(insidePoint, shell));
+    });
+    
+    polygons.push([boundaryPolygon, ...boundaryHoles]);
+  }
+  
+  return polygons;
+}
+
+/**
+ * 分析轮廓关系，确定外壳和洞
+ * @param {Array<Array<Array<Number>>>} contours 轮廓数组
+ * @param {Array<Array<Number>>} data 二维数据数组
+ * @param {Number} threshold 阈值
+ * @returns {Object} 包含外壳和洞的对象
+ */
+function analyzeContours(contours, data, threshold) {
+  const shells = [];
+  const holes = [];
+  
+  // 首先根据数据值确定每个轮廓是外壳还是洞
+  for (const contour of contours) {
+    if (isContourHole(contour, data, threshold)) {
+      holes.push(contour);
+    } else {
+      shells.push(contour);
+    }
+  }
+  
+  // 如果没有外壳但有洞，可能是因为数据边界应该作为外壳
+  if (shells.length === 0 && holes.length > 0) {
+    return { shells: [], holes };
+  }
+  
+  // 处理嵌套轮廓的情况
+  const finalShells = [];
+  const nestedHoles = new Set();
+  
+  // 检查每个外壳是否包含其他外壳
+  for (let i = 0; i < shells.length; i++) {
+    let isContained = false;
+    
+    for (let j = 0; j < shells.length; j++) {
+      if (i === j) continue;
+      
+      // 检查shell[i]是否在shell[j]内部
+      const insidePoint = getPointInsideRing(shells[i]);
+      if (isPointInPolygon(insidePoint, shells[j])) {
+        // 如果shell[i]在shell[j]内部，并且它们的方向相反，则shell[i]是一个洞
+        if (isClockwise(shells[i]) !== isClockwise(shells[j])) {
+          holes.push(shells[i]);
+          nestedHoles.add(i);
+          isContained = true;
+          break;
+        }
+      }
+    }
+    
+    if (!isContained) {
+      finalShells.push(shells[i]);
+    }
+  }
+  
+  return { 
+    shells: finalShells, 
+    holes: holes 
+  };
+}
+
+/**
+ * 找到指定外壳内的所有洞
+ * @param {Array<Array<Number>>} shell 外壳轮廓
+ * @param {Array<Array<Array<Number>>>} holes 所有洞轮廓
+ * @returns {Array<Array<Array<Number>>>} 在外壳内的洞
+ */
+function findHolesInShell(shell, holes) {
+  return holes.filter(hole => {
+    // 检查洞是否在外壳内
+    const insidePoint = getPointInsideRing(hole);
+    return isPointInPolygon(insidePoint, shell);
+  });
+}
+
+/**
+ * 判断是否需要添加边界多边形
+ * @param {Array<Array<Array<Number>>>} shells 外壳轮廓数组
+ * @param {Array<Array<Array<Number>>>} contourLines 等值线数组
+ * @param {Number} width 数据宽度
+ * @param {Number} height 数据高度
+ * @returns {Boolean} 是否需要添加边界多边形
+ */
+function shouldAddBoundaryPolygon(shells, contourLines, width, height) {
+  // 检查是否有任何轮廓与边界相交
+  const hasContourTouchingBoundary = contourLines.some(contour => {
+    return contour.some(point => isPointNearBoundary(point, width, height));
+  });
+  
+  // 检查外壳是否覆盖了整个数据区域
+  // 通过检查四个角点是否都在某个外壳内
+  const corners = [
+    [0.1, 0.1],
+    [width - 1.1, 0.1],
+    [width - 1.1, height - 1.1],
+    [0.1, height - 1.1]
+  ];
+  
+  const allCornersInShells = corners.every(corner => 
+    shells.some(shell => isPointInPolygon(corner, shell))
+  );
+  
+  // 如果有轮廓触及边界，但不是所有角点都在外壳内，则需要添加边界多边形
+  return hasContourTouchingBoundary && !allCornersInShells;
 }
 
 /**
@@ -147,10 +290,10 @@ function createBoundaryContours(contourLines, data, threshold, width, height) {
     }
   }
   
-     // 处理开放轮廓
-   if (openContours.length > 0) {
-     // 将开放轮廓两两配对，形成闭合轮廓
-     const pairedContours = pairOpenContours(openContours);
+  // 处理开放轮廓
+  if (openContours.length > 0) {
+    // 将开放轮廓两两配对，形成闭合轮廓
+    const pairedContours = pairOpenContours(openContours);
     
     for (const pairedContour of pairedContours) {
       // 创建一个新的闭合轮廓
@@ -194,7 +337,8 @@ function createBoundaryContours(contourLines, data, threshold, width, height) {
   const polygons = [];
   
   // 如果没有外壳，检查是否应该使用边界作为外壳
-  if (shells.length === 0 && shouldFillBoundary(data, threshold)) {
+  if (shells.length === 0) {
+    // 总是使用边界作为外壳，确保与等值线一致
     const polygon = [boundaryPoints, ...holes];
     polygons.push(polygon);
   } else {
@@ -203,6 +347,25 @@ function createBoundaryContours(contourLines, data, threshold, width, height) {
       const shellHoles = holes.filter(hole => isPointInPolygon(getPointInsideRing(hole), shell));
       const polygon = [shell, ...shellHoles];
       polygons.push(polygon);
+    }
+    
+    // 检查是否需要添加边界多边形
+    // 如果有任何等值线与边界相交，则需要添加边界多边形
+    const needBoundaryPolygon = openContours.some(contour => {
+      const start = contour[0];
+      const end = contour[contour.length - 1];
+      return isPointNearBoundary(start, width, height) || isPointNearBoundary(end, width, height);
+    });
+    
+    if (needBoundaryPolygon && shouldFillBoundary(data, threshold)) {
+      // 查找所有不在任何外壳内的洞
+      const boundaryHoles = holes.filter(hole => {
+        const insidePoint = getPointInsideRing(hole);
+        return !shells.some(shell => isPointInPolygon(insidePoint, shell));
+      });
+      
+      // 添加边界多边形，包含所有不在任何外壳内的洞
+      polygons.push([boundaryPoints, ...boundaryHoles]);
     }
   }
   
@@ -329,14 +492,32 @@ function connectContourToBoundary(contour, width, height) {
   // 添加边界点以闭合轮廓
   if (startNearBoundary && endNearBoundary) {
     // 两端都靠近边界，沿着边界连接它们
-    const boundaryPath = createBoundaryPath(endBoundary, startBoundary, width, height);
+    const boundaryPath = createBoundaryPath(end, startBoundary, width, height);
+    
+    // 添加终点到边界的连接点
+    if (!pointsAreClose(end, endBoundary)) {
+      closedContour.push(endBoundary);
+    }
+    
+    // 添加边界路径
     closedContour.push(...boundaryPath);
+    
+    // 添加起始边界点到起点的连接
+    if (!pointsAreClose(startBoundary, start)) {
+      closedContour.push(startBoundary);
+    }
   } else if (startNearBoundary) {
-    // 只有起点靠近边界，尝试将终点也连接到边界
+    // 只有起点靠近边界
+    if (!pointsAreClose(end, endBoundary)) {
+      closedContour.push(endBoundary);
+    }
     closedContour.push(startBoundary);
   } else if (endNearBoundary) {
-    // 只有终点靠近边界，尝试将起点也连接到边界
-    closedContour.unshift(endBoundary);
+    // 只有终点靠近边界
+    if (!pointsAreClose(end, endBoundary)) {
+      closedContour.push(endBoundary);
+    }
+    closedContour.push(startBoundary);
   }
   
   return closedContour;
@@ -458,105 +639,6 @@ function getBoundaryEdge(point, width, height) {
   if (minDist === distToRight) return 1;
   if (minDist === distToBottom) return 2;
   return 3;
-}
-
-/**
- * 构建轮廓层次结构
- * @param {Array<Array<Array<Number>>>} contours 轮廓数组
- * @returns {Array<Object>} 层次结构
- */
-function buildContourHierarchy(contours) {
-  const nodes = contours.map(contour => ({
-    contour,
-    children: []
-  }));
-  
-  // 构建包含关系
-  for (let i = 0; i < nodes.length; i++) {
-    const nodeI = nodes[i];
-    
-    for (let j = 0; j < nodes.length; j++) {
-      if (i === j) continue;
-      
-      const nodeJ = nodes[j];
-      
-      // 检查nodeJ是否包含在nodeI中
-      const pointInJ = getPointInsideRing(nodeJ.contour);
-      if (isPointInPolygon(pointInJ, nodeI.contour)) {
-        // 检查是否已经有更近的父节点
-        let hasCloserParent = false;
-        
-        for (let k = 0; k < nodes.length; k++) {
-          if (k === i || k === j) continue;
-          
-          const nodeK = nodes[k];
-          
-          if (isPointInPolygon(pointInJ, nodeK.contour) && 
-              isPointInPolygon(getPointInsideRing(nodeK.contour), nodeI.contour)) {
-            hasCloserParent = true;
-            break;
-          }
-        }
-        
-        if (!hasCloserParent) {
-          nodeI.children.push(nodeJ);
-        }
-      }
-    }
-  }
-  
-  // 找到根节点（没有父节点的节点）
-  const rootNodes = nodes.filter(node => {
-    for (const otherNode of nodes) {
-      if (node !== otherNode && 
-          isPointInPolygon(getPointInsideRing(node.contour), otherNode.contour)) {
-        return false;
-      }
-    }
-    return true;
-  });
-  
-  return rootNodes;
-}
-
-/**
- * 将层次结构转换为多边形
- * @param {Array<Object>} hierarchy 层次结构
- * @returns {Array<Array<Array<Number>>>} 多边形数组
- */
-function convertHierarchyToPolygons(hierarchy) {
-  const polygons = [];
-  
-  for (const node of hierarchy) {
-    const shell = node.contour;
-    const holes = node.children.map(child => child.contour);
-    
-    // 确保轮廓是闭合的
-    const closedShell = [...shell];
-    if (!pointsAreClose(closedShell[0], closedShell[closedShell.length - 1])) {
-      closedShell.push(closedShell[0]);
-    }
-    
-    const closedHoles = holes.map(hole => {
-      const closedHole = [...hole];
-      if (!pointsAreClose(closedHole[0], closedHole[closedHole.length - 1])) {
-        closedHole.push(closedHole[0]);
-      }
-      return closedHole;
-    });
-    
-    // 创建多边形
-    const polygon = [closedShell, ...closedHoles];
-    polygons.push(polygon);
-    
-    // 递归处理子节点的子节点
-    for (const child of node.children) {
-      const childPolygons = convertHierarchyToPolygons(child.children);
-      polygons.push(...childPolygons);
-    }
-  }
-  
-  return polygons;
 }
 
 /**

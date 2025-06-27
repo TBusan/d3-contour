@@ -1,0 +1,10 @@
+{
+  "name": "enhanced-contour-demo",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Enhanced contour generation with GeoJSON export",
+  "main": "enhanced-contour.js",
+  "scripts": {
+    "test": "node test-geojson.js"
+  }
+}

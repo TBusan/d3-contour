@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>D3 Contour Test - Null Values Support</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .controls {
+      margin-bottom: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      align-items: center;
+    }
+    
+    .info {
+      margin-top: 20px;
+      font-size: 14px;
+    }
+    
+    svg {
+      border: 1px solid #ccc;
+      background-color: #f9f9f9;
+    }
+    
+    select, input {
+      padding: 5px;
+      margin-left: 5px;
+    }
+    
+    label {
+      font-weight: bold;
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>D3 Contour Test - Null Values Support</h1>
+    <p>This demo shows the contour algorithm handling null values in the dataset</p>
+    
+    <div class="controls">
+      <div>
+        <label for="contour-count">Contour Lines:</label>
+        <input type="range" id="contour-count" min="5" max="50" value="20" step="5">
+        <span id="contour-count-value">20</span>
+      </div>
+      
+      <div>
+        <label for="color-scheme">Color Scheme:</label>
+        <select id="color-scheme">
+          <option value="interpolateYlGnBu">YlGnBu</option>
+          <option value="interpolateViridis">Viridis</option>
+          <option value="interpolateInferno">Inferno</option>
+          <option value="interpolatePlasma">Plasma</option>
+          <option value="interpolateWarm">Warm</option>
+          <option value="interpolateCool">Cool</option>
+        </select>
+      </div>
+    </div>
+    
+    <div id="chart-container">
+      <svg id="contour-svg" width="1000" height="600"></svg>
+    </div>
+    
+    <div class="info">
+      <div id="data-info"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import D3
+    import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+    
+    // Import our modified contours function from source
+    import { contours, contourDensity } from './tmp2.js'
+    
+    // Import test data
+    import { contourData } from '../test/data/testData1.js';
+    
+    // Reference to SVG and info elements
+    const svg = d3.select('#contour-svg');
+    const width = +svg.attr('width');
+    const height = +svg.attr('height');
+    
+    // UI controls
+    const contourCountSlider = document.getElementById('contour-count');
+    const contourCountValue = document.getElementById('contour-count-value');
+    const colorSchemeSelect = document.getElementById('color-scheme');
+    const dataInfo = document.getElementById('data-info');
+    
+    // Set up initial parameters
+    let thresholdCount = +contourCountSlider.value;
+    let colorScheme = colorSchemeSelect.value;
+    
+    // Update UI when controls change
+    contourCountSlider.addEventListener('input', function() {
+      thresholdCount = +this.value;
+      contourCountValue.textContent = thresholdCount;
+      renderContours();
+    });
+    
+    colorSchemeSelect.addEventListener('change', function() {
+      colorScheme = this.value;
+      renderContours();
+    });
+    
+    // Process data
+    function processData(data) {
+      const xValues = data.x;
+      const yValues = data.y;
+      const matrix = data.v;
+      
+      // Determine dimensions
+      const gridWidth = xValues.length;
+      const gridHeight = yValues.length;
+      
+      // Get min/max values, ignoring nulls
+      let min = Infinity;
+      let max = -Infinity;
+      
+      // Flatten the 2D array to 1D for d3.contours
+      const values = new Array(gridWidth * gridHeight);
+      
+      for (let y = 0; y < gridHeight; y++) {
+        for (let x = 0; x < gridWidth; x++) {
+          const val = matrix[y][x];
+          values[y * gridWidth + x] = val;
+          
+          if (val !== null && !isNaN(val)) {
+            min = Math.min(min, val);
+            max = Math.max(max, val);
+          }
+        }
+      }
+      
+      // Display data information
+      dataInfo.innerHTML = `
+        <p><strong>Data Range:</strong> ${min.toFixed(2)} to ${max.toFixed(2)}</p>
+        <p><strong>Grid Size:</strong> ${gridWidth} × ${gridHeight}</p>
+        <p><strong>Null Values:</strong> ${values.filter(v => v === null).length} of ${values.length} cells (${((values.filter(v => v === null).length / values.length) * 100).toFixed(1)}%)</p>
+      `;
+      
+      return {
+        xValues,
+        yValues,
+        values,
+        gridWidth,
+        gridHeight,
+        min,
+        max
+      };
+    }
+    
+    // Create contour visualization
+    function renderContours() {
+      // Clear previous content
+      svg.selectAll('*').remove();
+      
+      const { xValues, yValues, values, gridWidth, gridHeight, min, max } = processData(contourData.data);
+      
+      // Set up scales
+      const xScale = d3.scaleLinear()
+        .domain([d3.min(xValues), d3.max(xValues)])
+        .range([50, width - 50]);
+      
+      const yScale = d3.scaleLinear()
+        .domain([d3.min(yValues), d3.max(yValues)])
+        .range([height - 50, 50]);
+      
+      // Generate thresholds
+      const thresholds = d3.range(min, max, (max - min) / thresholdCount);
+      
+      // Create contour generator
+      const contourGenerator = contours()
+        .size([gridWidth, gridHeight])
+        .thresholds(thresholds);
+      
+      // Generate contour data
+      const contoursData = contourGenerator(values);
+      
+      // Create a path generator
+      const path = d3.geoPath();
+      
+      // Create color scale - Fixed to use scaleSequential with interpolator
+      const colorScale = d3.scaleSequential()
+        .domain([min, max])
+        .interpolator(d3[colorScheme]);
+      
+      // Create transform function
+      const transform = d => {
+        const x0 = xScale(xValues[0]);
+        const y0 = yScale(yValues[0]);
+        const x1 = xScale(xValues[xValues.length - 1]);
+        const y1 = yScale(yValues[yValues.length - 1]);
+        
+        const xfactor = (x1 - x0) / gridWidth;
+        const yfactor = (y1 - y0) / gridHeight;
+        
+        // Apply scaling factor to path
+        return d3.geoTransform({
+          point: function(x, y) {
+            this.stream.point(x0 + x * xfactor, y0 + y * yfactor);
+          }
+        });
+      };
+      
+      // Draw contours
+      svg.append('g')
+        .selectAll('path')
+        .data(contoursData)
+        .enter()
+        .append('path')
+        .attr('d', d => path(transform(d)))
+        .attr('fill', d => colorScale(d.value))
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 0.5)
+        .attr('stroke-opacity', 0.5);
+      
+      // Add axes
+      const xAxis = d3.axisBottom(xScale).ticks(10);
+      const yAxis = d3.axisLeft(yScale).ticks(10);
+      
+      svg.append('g')
+        .attr('transform', `translate(0, ${height - 50})`)
+        .call(xAxis);
+      
+      svg.append('g')
+        .attr('transform', `translate(50, 0)`)
+        .call(yAxis);
+      
+      // Add axis labels
+      svg.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('x', width / 2)
+        .attr('y', height - 10)
+        .text('X Axis');
+      
+      svg.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('transform', 'rotate(-90)')
+        .attr('x', -height / 2)
+        .attr('y', 15)
+        .text('Y Axis');
+    }
+    
+    // Initial render
+    renderContours();
+  </script>
+</body>
+</html> 

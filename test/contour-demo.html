@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>D3 Contour Optimization Demo</title>
+  <title>D3 Contour Demo</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -111,8 +111,8 @@
 </head>
 <body>
   <div class="container">
-    <h1>D3 Contour Optimization Demo</h1>
-    <p>This demo compares the original contour implementation with the optimized version featuring improved performance, topology handling, edge clipping, and smoothing controls.</p>
+    <h1>D3 Contour Demo</h1>
+    <p>This demo shows d3-contour's standard implementation. The 'optimization' features have been removed due to rendering issues.</p>
     
     <div class="controls">
       <div class="control-group">
@@ -155,7 +155,7 @@
     
     <div class="demo-grid">
       <div class="demo-panel">
-        <h2>Standard D3 Contour</h2>
+        <h2>D3 Contour (Left)</h2>
         <svg id="standard-svg"></svg>
         <div class="stats" id="standard-stats">
           Thresholds: 10<br>
@@ -164,12 +164,10 @@
       </div>
       
       <div class="demo-panel">
-        <h2>Optimized D3 Contour</h2>
+        <h2>D3 Contour (Right)</h2>
         <svg id="optimized-svg"></svg>
         <div class="stats" id="optimized-stats">
           Thresholds: 10<br>
-          Smooth Factor: 1.0<br>
-          Clip Edges: true<br>
           Execution time: 0ms
         </div>
       </div>
@@ -315,14 +313,12 @@
       const standardEndTime = performance.now();
       const standardTime = (standardEndTime - standardStartTime).toFixed(2);
       
-      // Optimized contour generation
+      // The same implementation for comparison - using d3.contours
       let optimizedStartTime = performance.now();
       
       const optimizedContour = contours()
         .size([size, size])
-        .thresholds(thresholds)
-        .smoothFactor(smoothFactor)
-        .clipEdges(clipEdges);
+        .thresholds(thresholds);
         
       if (!isSmoothing) {
         optimizedContour.smooth(false);
@@ -346,8 +342,6 @@
       optimizedStats.innerHTML = `
         Thresholds: ${thresholdCount}<br>
         Smoothing: ${isSmoothing ? 'On' : 'Off'}<br>
-        Smooth Factor: ${smoothFactor}<br>
-        Clip Edges: ${clipEdges}<br>
         Execution time: ${optimizedTime}ms
       `;
       

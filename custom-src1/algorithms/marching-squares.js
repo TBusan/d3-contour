@@ -21,6 +21,12 @@ export function marchingSquares(data, threshold, options = {}) {
   // 存储生成的线段
   const segments = [];
   
+  // 如果需要扩展到数据边界
+  if (options.extendToDataBounds) {
+    // 处理边界单元格
+    processDataBoundaries(data, threshold, width, height, segments);
+  }
+  
   // 遍历每个单元格（2x2网格）
   for (let y = 0; y < height - 1; y++) {
     for (let x = 0; x < width - 1; x++) {
@@ -59,6 +65,84 @@ export function marchingSquares(data, threshold, options = {}) {
 }
 
 /**
+ * 处理数据边界，确保等值线延伸到数据边界
+ * @param {Array<Array<Number>>} data 二维数据数组
+ * @param {Number} threshold 阈值
+ * @param {Number} width 数据宽度
+ * @param {Number} height 数据高度
+ * @param {Array<Array<Array<Number>>>} segments 线段数组
+ */
+function processDataBoundaries(data, threshold, width, height, segments) {
+  // 处理上边界
+  for (let x = 0; x < width - 1; x++) {
+    const value1 = data[0][x];
+    const value2 = data[0][x + 1];
+    
+    if ((value1 != null && value2 != null) && 
+        ((value1 < threshold && value2 >= threshold) || 
+         (value1 >= threshold && value2 < threshold))) {
+      // 计算交点
+      const t = (threshold - value1) / (value2 - value1);
+      const intersectionX = x + t;
+      
+      // 添加边界线段
+      segments.push([[intersectionX, 0], [intersectionX, 0]]);
+    }
+  }
+  
+  // 处理右边界
+  for (let y = 0; y < height - 1; y++) {
+    const value1 = data[y][width - 1];
+    const value2 = data[y + 1][width - 1];
+    
+    if ((value1 != null && value2 != null) && 
+        ((value1 < threshold && value2 >= threshold) || 
+         (value1 >= threshold && value2 < threshold))) {
+      // 计算交点
+      const t = (threshold - value1) / (value2 - value1);
+      const intersectionY = y + t;
+      
+      // 添加边界线段
+      segments.push([[width - 1, intersectionY], [width - 1, intersectionY]]);
+    }
+  }
+  
+  // 处理下边界
+  for (let x = 0; x < width - 1; x++) {
+    const value1 = data[height - 1][x];
+    const value2 = data[height - 1][x + 1];
+    
+    if ((value1 != null && value2 != null) && 
+        ((value1 < threshold && value2 >= threshold) || 
+         (value1 >= threshold && value2 < threshold))) {
+      // 计算交点
+      const t = (threshold - value1) / (value2 - value1);
+      const intersectionX = x + t;
+      
+      // 添加边界线段
+      segments.push([[intersectionX, height - 1], [intersectionX, height - 1]]);
+    }
+  }
+  
+  // 处理左边界
+  for (let y = 0; y < height - 1; y++) {
+    const value1 = data[y][0];
+    const value2 = data[y + 1][0];
+    
+    if ((value1 != null && value2 != null) && 
+        ((value1 < threshold && value2 >= threshold) || 
+         (value1 >= threshold && value2 < threshold))) {
+      // 计算交点
+      const t = (threshold - value1) / (value2 - value1);
+      const intersectionY = y + t;
+      
+      // 添加边界线段
+      segments.push([[0, intersectionY], [0, intersectionY]]);
+    }
+  }
+}
+
+/**
  * 根据单元格类型生成线段
  * @param {Number} x 单元格x坐标
  * @param {Number} y 单元格y坐标
@@ -73,7 +157,7 @@ export function marchingSquares(data, threshold, options = {}) {
  */
 function generateCellSegments(x, y, cellType, threshold, topLeft, topRight, bottomRight, bottomLeft, options) {
   // 根据Marching Squares查找表获取线段配置
-  const config = MARCHING_SQUARES_LOOKUP[cellType];
+  let config = MARCHING_SQUARES_LOOKUP[cellType];
   
   if (!config) {
     return [];
@@ -87,21 +171,25 @@ function generateCellSegments(x, y, cellType, threshold, topLeft, topRight, bott
     const centerValue = (topLeft + topRight + bottomRight + bottomLeft) / 4;
     
     // 根据中心值决定如何连接
-    if (cellType === 5) {
+    if (cellType === 5) { // 左上和右下高于阈值
       if (centerValue >= threshold) {
-        // 连接左上-右下
-        return generateCellSegments(x, y, 15, threshold, topLeft, topRight, bottomRight, bottomLeft, options);
+        // 如果中心值高于阈值，将四个点都视为高于阈值
+        // 使用类型15的配置（全部高于阈值）
+        config = []; // 没有等值线
       } else {
-        // 连接右上-左下
-        return generateCellSegments(x, y, 10, threshold, topLeft, topRight, bottomRight, bottomLeft, options);
+        // 如果中心值低于阈值，保持原样
+        // 即左上和右下高于阈值，右上和左下低于阈值
+        config = [0, 3, 1, 2]; // 连接左上-上边-左边 和 右下-右边-下边
       }
-    } else { // cellType === 10
+    } else if (cellType === 10) { // 右上和左下高于阈值
       if (centerValue >= threshold) {
-        // 连接右上-左下
-        return generateCellSegments(x, y, 15, threshold, topLeft, topRight, bottomRight, bottomLeft, options);
+        // 如果中心值高于阈值，将四个点都视为高于阈值
+        // 使用类型15的配置（全部高于阈值）
+        config = []; // 没有等值线
       } else {
-        // 连接左上-右下
-        return generateCellSegments(x, y, 5, threshold, topLeft, topRight, bottomRight, bottomLeft, options);
+        // 如果中心值低于阈值，保持原样
+        // 即右上和左下高于阈值，左上和右下低于阈值
+        config = [0, 1, 3, 2]; // 连接左上-上边-右上 和 左下-左边-下边
       }
     }
   }
@@ -186,9 +274,12 @@ function stitchSegments(segments, connectEnds) {
     currentContour.push(currentSegment[0], currentSegment[1]);
     
     let connected = true;
+    let iterationCount = 0;
+    const MAX_ITERATIONS = 1000; // 防止无限循环
     
     // 尝试连接更多线段
-    while (connected && connectEnds) {
+    while (connected && connectEnds && iterationCount < MAX_ITERATIONS) {
+      iterationCount++;
       connected = false;
       
       // 获取当前轮廓的首尾点
@@ -240,7 +331,22 @@ function stitchSegments(segments, connectEnds) {
     contours.push(currentContour);
   }
   
-  return contours;
+  // 对于非闭合轮廓，尝试与其他非闭合轮廓配对
+  const openContours = contours.filter(contour => 
+    !pointsAreClose(contour[0], contour[contour.length - 1])
+  );
+  
+  const closedContours = contours.filter(contour => 
+    pointsAreClose(contour[0], contour[contour.length - 1])
+  );
+  
+  // 尝试配对开放轮廓
+  if (openContours.length >= 2 && connectEnds) {
+    const pairedContours = pairOpenContours(openContours);
+    closedContours.push(...pairedContours);
+  }
+  
+  return [...closedContours, ...openContours.filter(c => c.length > 2)];
 }
 
 /**
@@ -254,6 +360,96 @@ function pointsAreClose(p1, p2) {
   const dx = p1[0] - p2[0];
   const dy = p1[1] - p2[1];
   return dx * dx + dy * dy < EPSILON;
+}
+
+/**
+ * 尝试配对开放轮廓
+ * @param {Array<Array<Array<Number>>>} openContours 开放轮廓数组
+ * @returns {Array<Array<Array<Number>>>} 配对后的闭合轮廓
+ */
+function pairOpenContours(openContours) {
+  const pairedContours = [];
+  const processed = new Set();
+  
+  for (let i = 0; i < openContours.length; i++) {
+    if (processed.has(i)) continue;
+    
+    const contour1 = openContours[i];
+    const start1 = contour1[0];
+    const end1 = contour1[contour1.length - 1];
+    
+    let bestMatchIndex = -1;
+    let minDistance = Infinity;
+    let connectionType = 0; // 0: end1->start2, 1: end1->end2, 2: start1->start2, 3: start1->end2
+    
+    // 找到最佳配对轮廓
+    for (let j = 0; j < openContours.length; j++) {
+      if (i === j || processed.has(j)) continue;
+      
+      const contour2 = openContours[j];
+      const start2 = contour2[0];
+      const end2 = contour2[contour2.length - 1];
+      
+      // 计算端点之间的距离
+      const distances = [
+        { type: 0, dist: distance(end1, start2) },   // end1->start2
+        { type: 1, dist: distance(end1, end2) },     // end1->end2
+        { type: 2, dist: distance(start1, start2) }, // start1->start2
+        { type: 3, dist: distance(start1, end2) }    // start1->end2
+      ];
+      
+      // 找到最小距离
+      const minDist = distances.reduce((min, curr) => 
+        curr.dist < min.dist ? curr : min, distances[0]
+      );
+      
+      if (minDist.dist < minDistance) {
+        minDistance = minDist.dist;
+        bestMatchIndex = j;
+        connectionType = minDist.type;
+      }
+    }
+    
+    // 如果找到合适的配对且距离足够近
+    if (bestMatchIndex >= 0 && minDistance < 1.0) {
+      const contour2 = openContours[bestMatchIndex];
+      let pairedContour;
+      
+      // 根据连接类型创建配对轮廓
+      switch (connectionType) {
+        case 0: // end1->start2
+          pairedContour = [...contour1, ...contour2];
+          break;
+        case 1: // end1->end2
+          pairedContour = [...contour1, ...contour2.slice().reverse()];
+          break;
+        case 2: // start1->start2
+          pairedContour = [...contour1.slice().reverse(), ...contour2];
+          break;
+        case 3: // start1->end2
+          pairedContour = [...contour2, ...contour1];
+          break;
+      }
+      
+      pairedContours.push(pairedContour);
+      processed.add(i);
+      processed.add(bestMatchIndex);
+    }
+  }
+  
+  return pairedContours;
+}
+
+/**
+ * 计算两点之间的距离
+ * @param {Array<Number>} p1 第一个点
+ * @param {Array<Number>} p2 第二个点
+ * @returns {Number} 距离
+ */
+function distance(p1, p2) {
+  const dx = p1[0] - p2[0];
+  const dy = p1[1] - p2[1];
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 /**

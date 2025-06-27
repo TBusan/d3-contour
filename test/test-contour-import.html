@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>D3 Contour Test Data - Import Version</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    .controls {
+      margin-bottom: 20px;
+      padding: 15px;
+      background-color: #f0f0f0;
+      border-radius: 5px;
+    }
+    .control-group {
+      margin-bottom: 10px;
+    }
+    h1 {
+      margin-top: 0;
+      color: #333;
+    }
+    h2 {
+      color: #555;
+    }
+    label {
+      display: inline-block;
+      width: 150px;
+      font-weight: bold;
+    }
+    input[type="range"] {
+      width: 200px;
+      vertical-align: middle;
+    }
+    .value-display {
+      display: inline-block;
+      width: 50px;
+      text-align: right;
+    }
+    select {
+      padding: 5px;
+      width: 200px;
+    }
+    button {
+      padding: 8px 15px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    .info {
+      font-family: monospace;
+      background-color: #eee;
+      padding: 10px;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+    svg {
+      width: 100%;
+      height: 600px;
+      border: 1px solid #ccc;
+      background-color: #fff;
+    }
+    .contour {
+      stroke: #000;
+      stroke-opacity: 0.2;
+      stroke-width: 0.5px;
+      fill-opacity: 0.5;
+    }
+    .axis path,
+    .axis line {
+      fill: none;
+      stroke: #000;
+      shape-rendering: crispEdges;
+    }
+    .axis text {
+      font-size: 11px;
+    }
+    .legend {
+      font-size: 12px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>D3 Contour Test Data Visualization</h1>
+    <p>Visualizing the test data from testDataForImport.js using d3-contour</p>
+    
+    <div class="controls">
+      <div class="control-group">
+        <label for="threshold-count">Threshold Count:</label>
+        <input type="range" id="threshold-count" min="5" max="30" value="15">
+        <span id="threshold-count-value" class="value-display">15</span>
+      </div>
+      
+      <div class="control-group">
+        <label for="color-scheme">Color Scheme:</label>
+        <select id="color-scheme">
+          <option value="viridis">Viridis</option>
+          <option value="inferno">Inferno</option>
+          <option value="magma">Magma</option>
+          <option value="plasma">Plasma</option>
+          <option value="warm">Warm</option>
+          <option value="cool">Cool</option>
+          <option value="rainbow">Rainbow</option>
+        </select>
+      </div>
+      
+      <div class="control-group">
+        <button id="update-btn">Update Visualization</button>
+      </div>
+    </div>
+    
+    <div class="visualization">
+      <svg id="contour-svg"></svg>
+      <div class="info" id="data-info">
+        Data will load shortly...
+      </div>
+    </div>
+  </div>
+  
+  <script type="module">
+    // Import D3
+    import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+    
+    // Import our contour function
+    import { contours,contourBand } from './tmp2.js';
+    
+    // Import test data
+    import { contourData } from './data/testData.js';
+    debugger
+    // Reference to SVG and info elements
+    const svg = d3.select('#contour-svg');
+    const dataInfo = document.getElementById('data-info');
+    
+    // UI Elements
+    const thresholdCountInput = document.getElementById('threshold-count');
+    const thresholdCountValue = document.getElementById('threshold-count-value');
+    const colorSchemeSelect = document.getElementById('color-scheme');
+    const updateBtn = document.getElementById('update-btn');
+    
+    // Update threshold count display
+    thresholdCountInput.addEventListener('input', () => {
+      thresholdCountValue.textContent = thresholdCountInput.value;
+    });
+    
+    // Update button click handler
+    updateBtn.addEventListener('click', updateVisualization);
+    
+    // Map color scheme names to d3 interpolators
+    const colorSchemes = {
+      viridis: d3.interpolateViridis,
+      inferno: d3.interpolateInferno,
+      magma: d3.interpolateMagma,
+      plasma: d3.interpolatePlasma,
+      warm: d3.interpolateWarm,
+      cool: d3.interpolateCool,
+      rainbow: d3.interpolateRainbow
+    };
+    
+    // Extract the values from the 2D array and flatten to 1D array
+    function prepareDataArray() {
+      const gridWidth = contourData.data.x.length;
+      const gridHeight = contourData.data.y.length;
+      const values = new Array(gridWidth * gridHeight);
+      
+      for (let y = 0; y < gridHeight; y++) {
+        for (let x = 0; x < gridWidth; x++) {
+          values[y * gridWidth + x] = contourData.data.v[y][x];
+        }
+      }
+      
+      return values;
+    }
+    
+    // Update the visualization based on current settings
+    function updateVisualization() {
+      // Clear the SVG
+      svg.selectAll('*').remove();
+      
+      // Get the current settings
+      const thresholdCount = parseInt(thresholdCountInput.value);
+      const colorScheme = colorSchemeSelect.value;
+      
+      // Get the grid dimensions
+      const gridWidth = contourData.data.x.length;
+      const gridHeight = contourData.data.y.length;
+      
+      // Prepare the data
+      const values = prepareDataArray();
+      
+      // Get the SVG dimensions
+      const svgWidth = svg.node().clientWidth;
+      const svgHeight = svg.node().clientHeight;
+      
+      // Set up scales for X and Y axes
+      const xScale = d3.scaleLinear()
+        .domain([d3.min(contourData.data.x), d3.max(contourData.data.x)])
+        .range([50, svgWidth - 50]);
+      
+      const yScale = d3.scaleLinear()
+        .domain([d3.min(contourData.data.y), d3.max(contourData.data.y)])
+        .range([svgHeight - 50, 50]);
+      
+      // Create X and Y axes
+      const xAxis = d3.axisBottom(xScale);
+      const yAxis = d3.axisLeft(yScale);
+      
+      // Add X axis
+      svg.append('g')
+        .attr('class', 'axis')
+        .attr('transform', `translate(0, ${svgHeight - 50})`)
+        .call(xAxis);
+      
+      // Add Y axis
+      svg.append('g')
+        .attr('class', 'axis')
+        .attr('transform', 'translate(50, 0)')
+        .call(yAxis);
+      
+      // Create a color scale
+      const colorScale = d3.scaleSequential(colorSchemes[colorScheme])
+        .domain([contourData.data.zmin, contourData.data.zmax]);
+      
+      // Generate thresholds
+      const thresholds = d3.range(thresholdCount)
+        .map(i => d3.quantile(values.filter(v => !isNaN(v)), i / (thresholdCount - 1)));
+      
+      // Create contour generator
+      const contourGenerator = contourBand()
+        .size([gridWidth, gridHeight])
+        .thresholds(thresholds);
+      
+      // Generate contour data
+      const contoursData = contourGenerator(values);
+      
+      // Create a path generator
+      const pathGenerator = d3.geoPath();
+      
+      // Create transform function for the contour coordinates
+      // This maps from grid coordinates to SVG coordinates
+      function transformPoint(point) {
+        const x = xScale(contourData.data.x[0] + (point[0] / gridWidth) * (contourData.data.x[gridWidth - 1] - contourData.data.x[0]));
+        const y = yScale(contourData.data.y[0] + (point[1] / gridHeight) * (contourData.data.y[gridHeight - 1] - contourData.data.y[0]));
+        return [x, y];
+      }
+      
+      // Create a custom path generator that transforms the coordinates
+      function transformedPath(d) {
+        // Create a deep copy of the geometry with transformed coordinates
+        const transformedGeometry = {
+          type: d.type,
+          value: d.value,
+          coordinates: d.coordinates.map(ring => 
+            ring.map(polygon => 
+              polygon.map(point => transformPoint(point))
+            )
+          )
+        };
+        
+        return pathGenerator(transformedGeometry);
+      }
+      
+      // Render contours
+      svg.append('g')
+        .selectAll('path')
+        .data(contoursData)
+        .enter()
+        .append('path')
+        .attr('d', transformedPath)
+        .attr('fill', d => colorScale(d.value))
+        .attr('class', 'contour');
+      
+      // Update data info
+      dataInfo.innerHTML = `
+        Data Range: [${contourData.data.zmin.toFixed(2)}, ${contourData.data.zmax.toFixed(2)}]<br>
+        Grid Size: ${gridWidth}×${gridHeight}<br>
+        Thresholds: ${thresholdCount}
+      `;
+    }
+    
+    // Initialize the visualization when the page loads
+    window.onload = updateVisualization;
+  </script>
+</body>
+</html> 
