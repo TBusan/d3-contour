@@ -58,7 +58,7 @@
   },
   "scripts": {
     "build": "rollup -c",
-    "build:win": "mkdir dist5>nul & rollup -c",
+    "build:win": "mkdir dist>nul & rollup -c",
     "test": "mkdir -p test/output && mocha -r module-alias/register 'test/**/*-test.js' test/snapshot.js && eslint src test",
     "test:win": "if not exist test\\output mkdir test\\output && mocha -r module-alias/register test/**/*-test.js test/snapshot.js && eslint src test",
     "prepublishOnly": "rm -rf dist && rollup -c",
