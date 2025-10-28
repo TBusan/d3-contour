@@ -1,0 +1,19 @@
+{
+  "name": "fixed-d3-contour",
+  "version": "1.0.0",
+  "description": "Fixed enhanced version of D3-contour",
+  "main": "fixed-index.js",
+  "type": "module",
+  "scripts": {
+    "test": "node fixed-test.js"
+  },
+  "dependencies": {
+    "d3-array": "^3.2.4"
+  },
+  "keywords": [
+    "d3",
+    "contour",
+    "visualization",
+    "geojson"
+  ]
+} 

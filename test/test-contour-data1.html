@@ -140,7 +140,7 @@
   <script type="module">
     // Import D3
     import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
-    import { contours, contourDensity,toGeoJSON } from './tmp3.js'
+    import { contours, contourDensity } from './tmp3.js'
     // Reference to SVG and info elements
     const svg = d3.select('#contour-svg');
     const dataInfo = document.getElementById('data-info');
@@ -233,7 +233,6 @@
       
       // Prepare the data
       const values = prepareDataArray();
-      debugger
       
       // Get the SVG dimensions
       const svgWidth = svg.node().clientWidth;
@@ -279,9 +278,7 @@
       
       // Generate contour data
       const contoursData = contourGenerator(values);
-      debugger
-      const hhh = toGeoJSON(contoursData);
-      debugger
+      
       // Create a path generator
       const pathGenerator = d3.geoPath()
         .context(null);
