@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>等值线数据集测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .canvas-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .canvas-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .canvas-card h2 {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .canvas-card .info {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+
+        canvas {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+
+        .controls {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+
+        .controls h3 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .control-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 14px;
+            color: #555;
+        }
+
+        input[type="range"] {
+            width: 120px;
+        }
+
+        input[type="number"] {
+            width: 70px;
+            padding: 5px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            background: #667eea;
+            color: white;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .stats-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .stats-item span:last-child {
+            font-weight: 600;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 等值线数据集测试</h1>
+            <p>测试完整数据和带 null 值数据的渲染效果</p>
+        </div>
+
+        <div class="canvas-grid">
+            <div class="canvas-card">
+                <h2>数据集 1: 完整的 5×5 网格</h2>
+                <div class="info">
+                    大小: 5×5 | 范围: 0 - 20 | 无缺失值
+                </div>
+                <canvas id="canvas1" width="500" height="500"></canvas>
+            </div>
+
+            <div class="canvas-card">
+                <h2>数据集 2: 带 null 值的 7×8 网格</h2>
+                <div class="info">
+                    大小: 7×8 | 范围: 1 - 27 | 包含缺失值
+                </div>
+                <canvas id="canvas2" width="500" height="500"></canvas>
+            </div>
+        </div>
+
+        <div class="controls">
+            <h3>🎛️ 控制面板</h3>
+            <div class="control-row">
+                <div class="control-item">
+                    <label>等值线数量:</label>
+                    <input type="range" id="contourCount" min="3" max="15" value="8">
+                    <span id="contourCountValue">8</span>
+                </div>
+                <div class="control-item">
+                    <label>平滑程度:</label>
+                    <input type="range" id="smoothIterations" min="0" max="4" value="0">
+                    <span id="smoothIterationsValue">0</span>
+                </div>
+                <div class="control-item">
+                    <label>线宽:</label>
+                    <input type="range" id="lineWidth" min="0.5" max="3" step="0.5" value="1">
+                    <span id="lineWidthValue">1</span>
+                </div>
+                <button id="refreshBtn">刷新渲染</button>
+            </div>
+            <div class="stats">
+                <div class="stats-item">
+                    <span>数据集1等值线:</span>
+                    <span id="stats1">-</span>
+                </div>
+                <div class="stats-item">
+                    <span>数据集2等值线:</span>
+                    <span id="stats2">-</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../dist/d3-contour.js"></script>
+    <script>
+        window.addEventListener('DOMContentLoaded', function() {
+            const d3Contour = window.d3;
+
+            // 数据集1: 完整的5x5网格
+            const dataset1 = [
+                [10, 10.625, 12.5, 15.625, 20],
+                [5.625, 6.25, 8.125, 11.25, 15.625],
+                [2.5, 3.125, 5., 8.125, 12.5],
+                [0.625, 1.25, 3.125, 6.25, 10.625],
+                [0, 0.625, 2.5, 5.625, 10]
+            ];
+
+            // 数据集2: 带null值的7x8网格
+            const dataset2 = [
+                [null, null, null, 12, 13, 14, 15, 16],
+                [null, 1, null, 11, null, null, null, 17],
+                [null, 2, 6, 7, null, null, null, 18],
+                [null, 3, null, 8, null, null, null, 19],
+                [5, 4, 10, 9, null, null, null, 20],
+                [null, null, null, 27, null, null, null, 21],
+                [null, null, null, 26, 25, 24, 23, 22]
+            ];
+
+            // 转换为1D数组并处理null值
+            function convertDataset(dataset) {
+                const ny = dataset.length;
+                const nx = dataset[0].length;
+                const grid = new Float32Array(nx * ny);
+
+                for (let y = 0; y < ny; y++) {
+                    for (let x = 0; x < nx; x++) {
+                        const value = dataset[y][x];
+                        grid[y * nx + x] = (value === null || value === undefined) ? NaN : value;
+                    }
+                }
+
+                return { grid, nx, ny };
+            }
+
+            // 创建颜色比例尺
+            function createLineColorScale(min, max) {
+                const colors = [
+                    '#440154', '#482878', '#3e4989', '#31688e',
+                    '#26828e', '#1f9e89', '#35b779', '#6dcd59',
+                    '#b4de2c', '#fde725'
+                ];
+
+                return (value) => {
+                    const t = (value - min) / (max - min);
+                    const index = Math.min(Math.floor(t * (colors.length - 1)), colors.length - 1);
+                    return colors[Math.max(0, index)];
+                };
+            }
+
+            // 创建等值线颜色比例尺（基于级别索引）
+            function createLevelColorScale(count) {
+                const colors = [
+                    '#440154', '#482878', '#3e4989', '#31688e',
+                    '#26828e', '#1f9e89', '#35b779', '#6dcd59',
+                    '#b4de2c', '#fde725', '#f46d43', '#d53e4f',
+                    '#9e0142', '#667eea', '#764ba2'
+                ];
+
+                return (levelIndex) => {
+                    return colors[levelIndex % colors.length];
+                };
+            }
+
+            // 渲染函数
+            function renderDataset(canvas, dataset, canvasId) {
+                const ctx = canvas.getContext('2d');
+                const { grid, nx, ny } = convertDataset(dataset);
+
+                // 获取控制参数
+                const contourCount = parseInt(document.getElementById('contourCount').value);
+                const smoothIter = parseInt(document.getElementById('smoothIterations').value);
+                const lineWidth = parseFloat(document.getElementById('lineWidth').value);
+
+                // 计算数据范围（忽略NaN）
+                const values = Array.from(grid).filter(v => !isNaN(v));
+                const min = Math.min(...values);
+                const max = Math.max(...values);
+
+                // 生成等值线
+                const { bands, lines, thresholds } = d3Contour.generateContoursAuto(grid, {
+                    size: [nx, ny],
+                    count: contourCount,
+                    smooth: false
+                });
+
+                // 创建颜色比例尺
+                const lineColorScale = createLevelColorScale(contourCount);
+
+                // 渲染
+                d3Contour.renderContoursCanvas(
+                    ctx,
+                    {
+                        bands: bands,
+                        lines: lines
+                    },
+                    {
+                        gridSize: [nx, ny],
+                        bandOptions: {
+                            fill: (value) => {
+                                const midValue = (value[0] + value[1]) / 2;
+                                const t = (midValue - min) / (max - min);
+                                const colors = [
+                                    '#440154', '#482878', '#3e4989', '#31688e',
+                                    '#26828e', '#1f9e89', '#35b779', '#6dcd59',
+                                    '#b4de2c', '#fde725'
+                                ];
+                                const index = Math.min(Math.floor(t * (colors.length - 1)), colors.length - 1);
+                                return colors[Math.max(0, index)];
+                            },
+                            opacity: 0.6
+                        },
+                        lineOptions: {
+                            stroke: (level, index) => lineColorScale(index),
+                            strokeWidth: lineWidth
+                        }
+                    }
+                );
+
+                return lines.length;
+            }
+
+            // 渲染所有
+            function renderAll() {
+                const count1 = renderDataset(
+                    document.getElementById('canvas1'),
+                    dataset1,
+                    'canvas1'
+                );
+
+                const count2 = renderDataset(
+                    document.getElementById('canvas2'),
+                    dataset2,
+                    'canvas2'
+                );
+
+                document.getElementById('stats1').textContent = count1;
+                document.getElementById('stats2').textContent = count2;
+            }
+
+            // 事件监听
+            document.getElementById('contourCount').addEventListener('input', (e) => {
+                document.getElementById('contourCountValue').textContent = e.target.value;
+            });
+            document.getElementById('contourCount').addEventListener('change', renderAll);
+
+            document.getElementById('smoothIterations').addEventListener('input', (e) => {
+                document.getElementById('smoothIterationsValue').textContent = e.target.value;
+            });
+            document.getElementById('smoothIterations').addEventListener('change', renderAll);
+
+            document.getElementById('lineWidth').addEventListener('input', (e) => {
+                document.getElementById('lineWidthValue').textContent = e.target.value;
+            });
+            document.getElementById('lineWidth').addEventListener('change', renderAll);
+
+            document.getElementById('refreshBtn').addEventListener('click', renderAll);
+
+            // 初始渲染
+            renderAll();
+        });
+    </script>
+</body>
+</html>

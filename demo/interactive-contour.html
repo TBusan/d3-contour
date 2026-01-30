@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D3-Contour 交互式 Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .content {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .canvas-container {
+            flex: 1;
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        canvas {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            max-width: 100%;
+            height: auto;
+        }
+
+        .controls {
+            width: 350px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            overflow-y: auto;
+            max-height: calc(100vh - 200px);
+        }
+
+        .control-group {
+            margin-bottom: 24px;
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .control-group h3 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .control-item {
+            margin-bottom: 16px;
+        }
+
+        .control-item:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+        }
+
+        .value-display {
+            min-width: 50px;
+            text-align: right;
+            font-size: 14px;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #e0e7ff;
+            color: #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #c7d2fe;
+        }
+
+        .stats {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 16px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .stats-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+        }
+
+        .stats-item span:last-child {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .loading.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 D3-Contour 交互式可视化</h1>
+            <p>增强版等值线/等值面渲染演示 | 基于 Plotly.js 架构设计</p>
+        </div>
+
+        <div class="content">
+            <div class="canvas-container">
+                <canvas id="contourCanvas" width="800" height="600"></canvas>
+                <div class="loading" id="loading">生成中...</div>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <h3>📊 数据生成</h3>
+                    <div class="control-item">
+                        <label>数据模式</label>
+                        <select id="dataMode">
+                            <option value="gaussian">高斯分布</option>
+                            <option value="peaks">多峰分布</option>
+                            <option value="waves">波浪纹</option>
+                            <option value="saddle">马鞍面</option>
+                            <option value="random">随机噪声</option>
+                        </select>
+                    </div>
+                    <div class="control-item">
+                        <label>网格分辨率</label>
+                        <div class="slider-container">
+                            <input type="range" id="gridResolution" min="30" max="150" value="80">
+                            <span class="value-display" id="gridResolutionValue">80</span>
+                        </div>
+                    </div>
+                    <div class="control-item">
+                        <label>噪声强度</label>
+                        <div class="slider-container">
+                            <input type="range" id="noiseLevel" min="0" max="50" value="10">
+                            <span class="value-display" id="noiseLevelValue">10%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>🎚️ 等值线设置</h3>
+                    <div class="control-item">
+                        <label>等值线数量</label>
+                        <div class="slider-container">
+                            <input type="range" id="contourCount" min="3" max="20" value="8">
+                            <span class="value-display" id="contourCountValue">8</span>
+                        </div>
+                    </div>
+                    <div class="control-item">
+                        <label>平滑程度</label>
+                        <div class="slider-container">
+                            <input type="range" id="smoothIterations" min="0" max="5" value="2">
+                            <span class="value-display" id="smoothIterationsValue">2</span>
+                        </div>
+                    </div>
+                    <div class="control-item">
+                        <label>平滑算法</label>
+                        <select id="smoothAlgorithm">
+                            <option value="chaikin">Chaikin 算法</option>
+                            <option value="catmullrom">Catmull-Rom 样条</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>🎨 显示设置</h3>
+                    <div class="control-item">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="showBands" checked>
+                            <label for="showBands">显示等值面</label>
+                        </div>
+                    </div>
+                    <div class="control-item">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="showLines" checked>
+                            <label for="showLines">显示等值线</label>
+                        </div>
+                    </div>
+                    <div class="control-item">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="showLabels" checked>
+                            <label for="showLabels">显示标签</label>
+                        </div>
+                    </div>
+                    <div class="control-item">
+                        <label>颜色方案</label>
+                        <select id="colorScheme">
+                            <option value="viridis">Viridis</option>
+                            <option value="plasma">Plasma</option>
+                            <option value="blues">Blues</option>
+                            <option value="heatmap">Heatmap</option>
+                        </select>
+                    </div>
+                    <div class="control-item">
+                        <label>等值面透明度</label>
+                        <div class="slider-container">
+                            <input type="range" id="bandOpacity" min="0" max="100" value="70">
+                            <span class="value-display" id="bandOpacityValue">70%</span>
+                        </div>
+                    </div>
+                    <div class="control-item">
+                        <label>等值线宽度</label>
+                        <div class="slider-container">
+                            <input type="range" id="lineWidth" min="5" max="30" value="10">
+                            <span class="value-display" id="lineWidthValue">1.0px</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>⚡ 操作</h3>
+                    <div class="button-group">
+                        <button class="btn-primary" id="generateBtn">生成</button>
+                        <button class="btn-secondary" id="randomBtn">随机</button>
+                    </div>
+                    <button class="btn-secondary" style="width: 100%; margin-top: 10px;" id="exportBtn">导出 PNG</button>
+                </div>
+
+                <div class="stats" id="stats">
+                    <div class="stats-item">
+                        <span>生成时间:</span>
+                        <span id="renderTime">0 ms</span>
+                    </div>
+                    <div class="stats-item">
+                        <span>等值面数:</span>
+                        <span id="bandCount">0</span>
+                    </div>
+                    <div class="stats-item">
+                        <span>等值线数:</span>
+                        <span id="lineCount">0</span>
+                    </div>
+                    <div class="stats-item">
+                        <span>标签数:</span>
+                        <span id="labelCount">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import all functions from the built library
+        import {
+            generateContoursAuto,
+            chaikinSmooth,
+            catmullRomSmooth,
+            generateLabelsForContours,
+            removeCollidingLabels,
+            renderContoursCanvas
+        } from '../demo/src/index.js';
+
+        // Global state
+        let state = {
+            dataMode: 'gaussian',
+            gridResolution: 80,
+            noiseLevel: 0.1,
+            contourCount: 8,
+            smoothIterations: 2,
+            smoothAlgorithm: 'chaikin',
+            showBands: true,
+            showLines: true,
+            showLabels: true,
+            colorScheme: 'viridis',
+            bandOpacity: 0.7,
+            lineWidth: 1.0
+        };
+
+        // Canvas setup
+        const canvas = document.getElementById('contourCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Data generation functions
+        function generateData(mode, nx, ny, noise) {
+            const grid = new Float32Array(nx * ny);
+            const time = Date.now() / 1000;
+
+            for (let y = 0; y < ny; y++) {
+                for (let x = 0; x < nx; x++) {
+                    const nx_norm = x / nx;
+                    const ny_norm = y / ny;
+                    let value = 0;
+
+                    switch (mode) {
+                        case 'gaussian':
+                            const dx = nx_norm - 0.5;
+                            const dy = ny_norm - 0.5;
+                            value = Math.exp(-(dx * dx + dy * dy) / 0.1);
+                            break;
+
+                        case 'peaks':
+                            value = (
+                                Math.exp(-((nx_norm - 0.3) ** 2 + (ny_norm - 0.3) ** 2) / 0.05) +
+                                Math.exp(-((nx_norm - 0.7) ** 2 + (ny_norm - 0.7) ** 2) / 0.05) * 0.8 +
+                                Math.exp(-((nx_norm - 0.5) ** 2 + (ny_norm - 0.5) ** 2) / 0.03) * 0.6
+                            );
+                            break;
+
+                        case 'waves':
+                            value = (
+                                Math.sin(nx_norm * Math.PI * 4) * Math.cos(ny_norm * Math.PI * 4) * 0.5 +
+                                Math.sin(nx_norm * Math.PI * 2 + time) * Math.cos(ny_norm * Math.PI * 2) * 0.3 +
+                                0.5
+                            );
+                            break;
+
+                        case 'saddle':
+                            value = (nx_norm - 0.5) * (ny_norm - 0.5) * 4 + 0.5;
+                            break;
+
+                        case 'random':
+                            value = Math.random();
+                            break;
+                    }
+
+                    // Add noise
+                    value += (Math.random() - 0.5) * noise;
+                    value = Math.max(0, Math.min(1, value));
+
+                    grid[y * nx + x] = value;
+                }
+            }
+
+            return grid;
+        }
+
+        // Create color scale
+        function createColorScale(scheme) {
+            const scales = {
+                viridis: (t) => {
+                    const r = Math.floor(68 + t * (33 - 68));
+                    const g = Math.floor(1 + t * (144 - 1));
+                    const b = Math.floor(84 + t * (140 - 84));
+                    return `rgb(${r},${g},${b})`;
+                },
+                plasma: (t) => {
+                    const r = Math.floor(13 + t * (240 - 13));
+                    const g = Math.floor(8 + t * (249 - 8));
+                    const b = Math.floor(135 + t * (33 - 135));
+                    return `rgb(${r},${g},${b})`;
+                },
+                blues: (t) => {
+                    const b = Math.floor(255 * (0.3 + 0.7 * t));
+                    return `rgb(50,100,${b})`;
+                },
+                heatmap: (t) => {
+                    if (t < 0.33) {
+                        return `rgb(0,${Math.floor(255 * t / 0.33)},255)`;
+                    } else if (t < 0.67) {
+                        return `rgb(0,255,${Math.floor(255 * (1 - (t - 0.33) / 0.34))})`;
+                    } else {
+                        return `rgb(${Math.floor(255 * (t - 0.67) / 0.33)},${Math.floor(255 * (1 - (t - 0.67) / 0.33))},0)`;
+                    }
+                }
+            };
+
+            const scaleFn = scales[scheme] || scales.viridis;
+            return (value) => {
+                const t = Math.max(0, Math.min(1, value));
+                return scaleFn(t);
+            };
+        }
+
+        // Main render function
+        async function render() {
+            const startTime = performance.now();
+            document.getElementById('loading').classList.add('show');
+
+            // Small delay to allow UI update
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            // Generate data
+            const nx = state.gridResolution;
+            const ny = Math.floor(state.gridResolution * 0.75);
+            const grid = generateData(state.dataMode, nx, ny, state.noiseLevel);
+
+            // Generate contours
+            const { bands, lines } = generateContoursAuto(grid, {
+                size: [nx, ny],
+                count: state.contourCount
+            });
+
+            // Apply smoothing
+            const smoothFn = state.smoothAlgorithm === 'chaikin' ? chaikinSmooth : catmullRomSmooth;
+            const smoothedLines = lines.map(line => ({
+                ...line,
+                paths: line.paths.map(path =>
+                    state.smoothIterations > 0 ? smoothFn(path, state.smoothIterations) : path
+                )
+            }));
+
+            // Generate labels
+            let labels = [];
+            if (state.showLabels) {
+                labels = removeCollidingLabels(
+                    generateLabelsForContours(smoothedLines, { format: '.2f' }),
+                    { width: 60, height: 20, padding: 5 }
+                );
+            }
+
+            // Create color scale
+            const colorScale = createColorScale(state.colorScheme);
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Render
+            renderContoursCanvas(
+                ctx,
+                {
+                    bands: state.showBands ? bands : [],
+                    lines: state.showLines ? smoothedLines : []
+                },
+                {
+                    bandOptions: {
+                        fill: (value) => {
+                            const midValue = (value[0] + value[1]) / 2;
+                            return colorScale(midValue);
+                        },
+                        opacity: state.bandOpacity
+                    },
+                    lineOptions: {
+                        stroke: () => 'rgba(255,255,255,0.8)',
+                        strokeWidth: state.lineWidth
+                    },
+                    labelOptions: {
+                        fontSize: 12,
+                        fill: 'black',
+                        halo: 'white',
+                        haloWidth: 3
+                    },
+                    labels: state.showLabels ? labels : []
+                }
+            );
+
+            const endTime = performance.now();
+            const renderTime = (endTime - startTime).toFixed(1);
+
+            // Update stats
+            document.getElementById('renderTime').textContent = `${renderTime} ms`;
+            document.getElementById('bandCount').textContent = bands.length;
+            document.getElementById('lineCount').textContent = smoothedLines.length;
+            document.getElementById('labelCount').textContent = labels.length;
+
+            document.getElementById('loading').classList.remove('show');
+        }
+
+        // Event listeners
+        function setupEventListeners() {
+            // Data mode
+            document.getElementById('dataMode').addEventListener('change', (e) => {
+                state.dataMode = e.target.value;
+                render();
+            });
+
+            // Grid resolution
+            document.getElementById('gridResolution').addEventListener('input', (e) => {
+                state.gridResolution = parseInt(e.target.value);
+                document.getElementById('gridResolutionValue').textContent = e.target.value;
+            });
+            document.getElementById('gridResolution').addEventListener('change', render);
+
+            // Noise level
+            document.getElementById('noiseLevel').addEventListener('input', (e) => {
+                state.noiseLevel = parseInt(e.target.value) / 100;
+                document.getElementById('noiseLevelValue').textContent = `${e.target.value}%`;
+            });
+            document.getElementById('noiseLevel').addEventListener('change', render);
+
+            // Contour count
+            document.getElementById('contourCount').addEventListener('input', (e) => {
+                state.contourCount = parseInt(e.target.value);
+                document.getElementById('contourCountValue').textContent = e.target.value;
+            });
+            document.getElementById('contourCount').addEventListener('change', render);
+
+            // Smooth iterations
+            document.getElementById('smoothIterations').addEventListener('input', (e) => {
+                state.smoothIterations = parseInt(e.target.value);
+                document.getElementById('smoothIterationsValue').textContent = e.target.value;
+            });
+            document.getElementById('smoothIterations').addEventListener('change', render);
+
+            // Smooth algorithm
+            document.getElementById('smoothAlgorithm').addEventListener('change', (e) => {
+                state.smoothAlgorithm = e.target.value;
+                render();
+            });
+
+            // Show bands
+            document.getElementById('showBands').addEventListener('change', (e) => {
+                state.showBands = e.target.checked;
+                render();
+            });
+
+            // Show lines
+            document.getElementById('showLines').addEventListener('change', (e) => {
+                state.showLines = e.target.checked;
+                render();
+            });
+
+            // Show labels
+            document.getElementById('showLabels').addEventListener('change', (e) => {
+                state.showLabels = e.target.checked;
+                render();
+            });
+
+            // Color scheme
+            document.getElementById('colorScheme').addEventListener('change', (e) => {
+                state.colorScheme = e.target.value;
+                render();
+            });
+
+            // Band opacity
+            document.getElementById('bandOpacity').addEventListener('input', (e) => {
+                state.bandOpacity = parseInt(e.target.value) / 100;
+                document.getElementById('bandOpacityValue').textContent = `${e.target.value}%`;
+            });
+            document.getElementById('bandOpacity').addEventListener('change', render);
+
+            // Line width
+            document.getElementById('lineWidth').addEventListener('input', (e) => {
+                state.lineWidth = parseInt(e.target.value) / 10;
+                document.getElementById('lineWidthValue').textContent = `${state.lineWidth.toFixed(1)}px`;
+            });
+            document.getElementById('lineWidth').addEventListener('change', render);
+
+            // Generate button
+            document.getElementById('generateBtn').addEventListener('click', render);
+
+            // Random button
+            document.getElementById('randomBtn').addEventListener('click', () => {
+                // Randomize settings
+                state.dataMode = ['gaussian', 'peaks', 'waves', 'saddle'][Math.floor(Math.random() * 4)];
+                state.contourCount = 5 + Math.floor(Math.random() * 10);
+                state.smoothIterations = Math.floor(Math.random() * 4);
+                state.colorScheme = ['viridis', 'plasma', 'blues', 'heatmap'][Math.floor(Math.random() * 4)];
+
+                // Update UI
+                document.getElementById('dataMode').value = state.dataMode;
+                document.getElementById('contourCount').value = state.contourCount;
+                document.getElementById('contourCountValue').textContent = state.contourCount;
+                document.getElementById('smoothIterations').value = state.smoothIterations;
+                document.getElementById('smoothIterationsValue').textContent = state.smoothIterations;
+                document.getElementById('colorScheme').value = state.colorScheme;
+
+                render();
+            });
+
+            // Export button
+            document.getElementById('exportBtn').addEventListener('click', () => {
+                const link = document.createElement('a');
+                link.download = `contour-${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            });
+        }
+
+        // Initialize
+        setupEventListeners();
+        render();
+    </script>
+</body>
+</html>
